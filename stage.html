@@ -483,9 +483,26 @@ async function tamper(){
   $("#msgs").scrollTop = 1e6;
 }
 
+/* replay a finished run (demo backup / screenshots): /?replay=<run_id>&focus=<stage id> */
+async function replay(id, focus){
+  reset(); build(); S.run = id;
+  const evs = await (await fetch(`/agent/events_since/${id}?since=0`)).json();
+  evs.forEach(push);
+  while (busy || Q.length) await sleep(200);
+  $("#sTime").textContent = (evs.at(-1)?.ts || 0).toFixed(1) + "s";
+  if (focus){  // start the view at this stage (screenshots)
+    const t = $("#track"); t.style.scrollBehavior = "auto";
+    STAGES.slice(0, IDX[focus]).forEach(x => { card(x.id).style.display = "none"; const l = $("#l-" + x.id); if (l) l.style.display = "none"; });
+    $("#l-" + focus) && ($("#l-" + focus).style.display = "none"); t.scrollLeft = 0; }
+  await sleep(1500); document.getAnimations().forEach(x => { try { if (x.effect.getTiming().iterations !== Infinity) x.finish(); } catch {} });
+  document.body.dataset.ready = "1";
+}
+
 (async () => {
   build();
   const s = await (await fetch("/samples")).json();
+  const P = new URLSearchParams(location.search);
+  if (P.get("replay")) replay(P.get("replay"), P.get("focus"));
   $("#sample").innerHTML = s.samples.map(n => `<option value="${esc(n)}" ${n === "SAMPLE_Arztbrief_ATTACK.png" ? "selected" : ""}>${esc(n.replace(/\.(png|jpe?g|pdf)$/i, "").replace(/_/g, " "))}</option>`).join("");
 })();
 </script>

@@ -6,6 +6,26 @@ Upload a document image or PDF, such as a doctor's letter or an invoice. The app
 
 Built for the DevFest Münster 2026 Agentic AI Hackathon with Google ADK, Gemini and Gemma 4.
 
+![Architecture](architecture.png)
+
+## Demo
+
+**Reading the page.** OCR finds every line, then the text layer is pulled out on-device.
+
+![OCR step](screenshots/demo-pipeline.png)
+
+**Decide, erase, redraw.** Green: the owner's data (replaced). Grey: other people's (kept). Red: injected instructions (ignored).
+
+![Decide, erase and redraw](screenshots/demo-decide.png)
+
+**Verify and result.** Red shows every pixel that changed. Drag the slider to compare, then ask Gemini about the anonymised copy.
+
+![Verify and result](screenshots/demo-result.png)
+
+**Bad files are stopped before any agent sees them.**
+
+<img src="screenshots/demo-blocked.png" width="420" alt="Blocked file">
+
 ## What gets replaced
 
 Only the document owner's data:
@@ -69,7 +89,8 @@ Open http://localhost:8000, pick a sample and press **Run**. The first run takes
 |---|---|
 | `/` | Step-by-step view of the agents |
 | `/trace` | Detailed trace view |
-| `/architecture` | Architecture diagram |
+| `/architecture` | Architecture diagram (source of `architecture.png`) |
+| `/?replay=<run_id>` | Replays a finished run from its audit log, without calling Gemini |
 
 Terminal version:
 
