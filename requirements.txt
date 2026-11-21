@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-multipart
+requests
+pillow
+pymupdf
+pyobjc-framework-Vision
+pyobjc-framework-Quartz
+numpy
+opencv-python
+torch
+simple-lama-inpainting
+faker
+google-adk
+litellm

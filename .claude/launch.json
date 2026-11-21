@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pii-demo",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": [
+        "app:app",
+        "--port",
+        "8000",
+        "--reload",
+        "--timeout-graceful-shutdown",
+        "2"
+      ],
+      "port": 8000
+    }
+  ]
+}

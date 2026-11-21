@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document anonymiser</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e3de;
+    --accent: #3b4cca;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  h1 { font-size: 16px; margin: 0 10px 0 0; }
+  label { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  select, button, input[type=file] { font: inherit; }
+  select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  button { padding: 6px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  .status { color: var(--muted); margin-left: auto; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 480px; gap: 20px; padding: 20px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+
+  .viewer { align-self: start; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .tabs button { background: transparent; color: var(--muted); border: 1px solid transparent; padding: 4px 12px; }
+  .tabs button.on { background: var(--panel); color: var(--ink); border-color: var(--line); }
+  .doc { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; user-select: none; }
+  .doc img { display: block; width: 100%; height: auto; }
+  .doc .layer { position: absolute; inset: 0; }
+  .doc svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .handle { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); pointer-events: none; }
+  .handle::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--accent); color: #fff; border-radius: 50%; width: 28px; height: 28px; display: grid; place-items: center; font-size: 14px; }
+  .tag { position: absolute; top: 8px; padding: 2px 8px; border-radius: 4px; background: #000a; color: #fff; font-size: 12px; pointer-events: none; }
+  .empty { padding: 80px 20px; text-align: center; color: var(--muted); }
+
+  .side { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; align-self: start; max-height: calc(100vh - 100px); overflow: auto; }
+  .side h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .box { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 5px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  tr:hover td { background: #f3f4ff; }
+  .chip { display: inline-block; padding: 1px 7px; border-radius: 10px; color: #fff; font-size: 11px; white-space: nowrap; }
+  .lvl { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #eef; color: #334; white-space: nowrap; }
+  .lvl.ghost { background: #fdd; color: #900; }
+  .miss { color: #b00; font-size: 11px; }
+  details { margin-top: 12px; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; background: #f6f6f4; padding: 8px; border-radius: 6px; }
+  rect.hl { stroke-width: 5 !important; }
+  tr.kept td { color: var(--muted); }
+  tr.sep td { padding-top: 14px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+  .why { font-size: 11px; color: var(--muted); }
+  .crit { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+  .crit b { color: var(--ink); font-weight: 600; }
+  input[type=text] { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; flex: 1; min-width: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Document anonymiser</h1>
+  <input type="file" id="file" accept="image/*,application/pdf">
+  <label>Model <select id="model"></select></label>
+  <label><input type="checkbox" id="think" checked> thinking</label>
+  <button id="go" disabled>Find my data</button>
+  <label>or sample <select id="sampleSel"></select></label>
+  <button id="sample" class="ghost">Use sample</button>
+  <span class="status" id="status">Pick an image or PDF.</span>
+</header>
+<main>
+  <div class="viewer">
+    <div class="tabs" id="tabs">
+      <button data-v="boxes" class="on">Boxes</button>
+      <button data-v="erased" disabled>Erased</button>
+      <button data-v="anon" disabled>Anonymized</button>
+      <button data-v="compare" disabled>Before / after</button>
+    </div>
+    <div class="doc" id="doc"><div class="empty">Upload a document to see detected PII.</div></div>
+  </div>
+  <aside class="side">
+    <div class="box">
+      <h2>Whose document is this?</h2>
+      <div class="row">
+        <input type="text" id="subject" placeholder="run detection first" disabled>
+        <button id="rescope" class="ghost" disabled>Apply</button>
+      </div>
+      <ul class="crit">
+        <li>Only <b>this person's</b> data is replaced: name (every spelling), home address, birth date, phone, email, IBAN, and their customer / insurance / order / invoice numbers.</li>
+        <li><b>Kept as is:</b> doctors, staff, signatories, companies and their details; document dates, amounts, medical content.</li>
+      </ul>
+      <label><input type="checkbox" id="showKept" checked> show kept items (dashed)</label>
+    </div>
+    <div class="box">
+      <h2>Anonymize</h2>
+      <div class="row">
+        <label>Erase <select id="level">
+          <option value="auto">auto (per box)</option>
+          <option value="fill">fill (flat bg)</option>
+          <option value="cv">OpenCV Telea</option>
+          <option value="lama">LaMa</option>
+        </select></label>
+        <label><input type="checkbox" id="ghost" checked> ghost check</label>
+      </div>
+      <div class="row">
+        <label>Slider <select id="cmp">
+          <option value="anonymized">original ↔ anonymized</option>
+          <option value="erased">original ↔ erased</option>
+        </select></label>
+      </div>
+      <div class="row">
+        <button id="erase" disabled>Anonymize selected</button>
+        <span id="eraseStatus" style="color:var(--muted)"></span>
+      </div>
+    </div>
+    <table><thead><tr><th><input type="checkbox" id="all" checked title="select all"></th><th>Type</th><th>Text</th><th>Replaced with</th></tr></thead><tbody id="rows"></tbody></table>
+    <details><summary>Raw Gemma output</summary><pre id="raw"></pre></details>
+  </aside>
+</main>
+<script>
+const COLORS = { name: "#e6194b", email: "#3cb44b", phone: "#4363d8", address: "#f58231",
+  iban: "#911eb4", id_number: "#008080", date: "#9a6324", birth_date: "#9a6324", company: "#f032e6" };
+const color = l => COLORS[l] || "#444";
+const $ = id => document.getElementById(id);
+let result = null, erased = null, view = "boxes", split = 50;
+
+fetch("/models").then(r => r.json()).then(d => {
+  for (const m of d.models) $("model").add(new Option(m, m, false, m === d.default));
+}).catch(() => $("status").textContent = "Ollama not reachable.");
+
+fetch("/samples").then(r => r.json()).then(d => d.samples.forEach(n => $("sampleSel").add(new Option(n, n))));
+$("file").onchange = () => { $("go").disabled = !$("file").files.length; };
+$("showKept").onchange = render;
+$("cmp").onchange = () => { if (view === "compare") renderDoc(); };
+$("tabs").onclick = e => { const v = e.target.dataset?.v; if (v && !e.target.disabled) { view = v; render(); } };
+$("all").onchange = () => { result?.items.forEach(it => it.sel = !it.kept && $("all").checked); renderRows(); renderDoc(); };
+
+function setScope(d) {
+  result.subject = d.subject;
+  result.items = [...d.items.map(it => ({ ...it, sel: true })), ...d.kept.map(it => ({ ...it, kept: true, sel: false }))];
+  $("subject").value = d.subject; $("subject").disabled = $("rescope").disabled = false;
+  erased = null; view = "boxes";
+}
+$("rescope").onclick = async () => {
+  const r = await fetch("/rescope", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ doc_id: result.doc_id, subject: $("subject").value }) });
+  if (!r.ok) { $("status").textContent = "Error: " + ((await r.json()).detail || r.statusText); return; }
+  setScope(await r.json()); statusLine(); render();
+};
+$("subject").onkeydown = e => { if (e.key === "Enter") $("rescope").click(); };
+function statusLine() {
+  const n = result.items.filter(i => !i.kept).length, k = result.items.length - n;
+  $("status").textContent = `Subject: ${result.subject || "?"} · ${n} to replace, ${k} kept · Gemma ${result.timing.gemma_s}s · OCR ${result.timing.ocr_s}s`;
+}
+
+$("sample").onclick = async () => {
+  const r = await fetch("/sample?name=" + encodeURIComponent($("sampleSel").value));
+  const name = (r.headers.get("content-disposition") || "").match(/filename="?([^";]+)/)?.[1] || "sample.png";
+  const dt = new DataTransfer();
+  dt.items.add(new File([await r.blob()], name));
+  $("file").files = dt.files;
+  $("go").disabled = false;
+  $("go").click();
+};
+
+$("go").onclick = async () => {
+  const fd = new FormData();
+  fd.append("file", $("file").files[0]);
+  fd.append("model", $("model").value);
+  fd.append("think", $("think").checked);
+  $("go").disabled = true;
+  const t0 = performance.now();
+  const tick = setInterval(() => $("status").textContent = `Reading the document… ${((performance.now() - t0) / 1000).toFixed(0)}s`, 250);
+  try {
+    const r = await fetch("/detect", { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const d = await r.json();
+    result = d; setScope(d); statusLine();
+    render();
+  } catch (e) {
+    $("status").textContent = "Error: " + e.message;
+  } finally {
+    clearInterval(tick);
+    $("go").disabled = false;
+  }
+};
+
+$("erase").onclick = async () => {
+  const chosen = result.items.filter(it => it.sel);
+  $("erase").disabled = true;
+  $("eraseStatus").textContent = "Anonymizing…";
+  try {
+    const r = await fetch("/anonymize", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc_id: result.doc_id, level: $("level").value, ghost_check: $("ghost").checked,
+        items: chosen.map(it => ({ box: it.box, label: it.label, text: it.ocr_text, trail: it.trail || "", full_line: !!it.full_line })) }) });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    erased = await r.json();
+    result.items.forEach(it => delete it.erase);
+    chosen.forEach((it, k) => it.erase = erased.info[k]);
+    const counts = {}; erased.info.forEach(i => counts[i.level] = (counts[i.level] || 0) + 1);
+    const ghosts = erased.info.filter(i => i.ghost).length;
+    const fam = erased.info.find(i => i.doc_family)?.doc_family;
+    $("eraseStatus").textContent = `${chosen.length} boxes · erase ${erased.timing.erase_s}s, render ${erased.timing.render_s}s · ` +
+      Object.entries(counts).map(([k, v]) => `${v}× ${k}`).join(", ") + (fam ? ` · font: ${fam}` : "") + (ghosts ? ` · ${ghosts} still readable` : "");
+    view = "compare";
+    render();
+  } catch (e) {
+    $("eraseStatus").textContent = "Error: " + e.message;
+  } finally {
+    $("erase").disabled = false;
+  }
+};
+
+function render() { renderTabs(); renderDoc(); renderRows(); $("raw").textContent = result?.raw || ""; }
+
+function renderTabs() {
+  document.querySelectorAll("#tabs button").forEach(b => {
+    b.classList.toggle("on", b.dataset.v === view);
+    b.disabled = b.dataset.v !== "boxes" && !erased;
+  });
+  $("erase").disabled = !result || !result.items.some(it => it.sel);
+}
+
+function overlaySvg() {
+  const { width: W, height: H, items } = result;
+  const showKept = $("showKept").checked;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+  items.forEach((it, k) => {
+    const [x1, y1, x2, y2] = it.box;
+    if (it.kept && !it.sel) {
+      if (showKept) svg += `<rect data-k="${k}" x="${x1 - 2}" y="${y1 - 2}" width="${x2 - x1 + 4}" height="${y2 - y1 + 4}" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="5 4" rx="2"/>`;
+      return;
+    }
+    const c = color(it.label), op = it.sel ? 1 : 0.25;
+    svg += `<rect data-k="${k}" x="${x1 - 2}" y="${y1 - 2}" width="${x2 - x1 + 4}" height="${y2 - y1 + 4}" fill="${c}22" stroke="${c}" stroke-width="2.5" rx="2" opacity="${op}"/>`;
+  });
+  return svg + "</svg>";
+}
+
+function renderDoc() {
+  if (!result) return;
+  const doc = $("doc");
+  if (view === "boxes" || !erased) {
+    doc.innerHTML = `<img src="${result.image}" alt="document">${overlaySvg()}`;
+  } else if (view === "erased") {
+    doc.innerHTML = `<img src="${erased.erased}" alt="erased">`;
+  } else if (view === "anon") {
+    doc.innerHTML = `<img src="${erased.anonymized}" alt="anonymized">`;
+  } else {
+    const right = $("cmp").value;
+    doc.innerHTML = `<img src="${result.image}" alt="original">
+      <div class="layer" id="afterLayer" style="clip-path: inset(0 0 0 ${split}%)"><img src="${erased[right]}" alt="${right}"></div>
+      <div class="handle" id="handle" style="left:${split}%"></div>
+      <span class="tag" style="left:8px">original</span><span class="tag" style="right:8px">${right}</span>`;
+    const move = e => {
+      const r = doc.getBoundingClientRect();
+      split = Math.max(0, Math.min(100, ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) / r.width * 100));
+      $("afterLayer").style.clipPath = `inset(0 0 0 ${split}%)`;
+      $("handle").style.left = split + "%";
+    };
+    let drag = false;
+    doc.onmousedown = e => { drag = true; move(e); };
+    window.onmouseup = () => drag = false;
+    doc.onmousemove = e => drag && move(e);
+    doc.ontouchstart = doc.ontouchmove = move;
+  }
+}
+
+function renderRows() {
+  if (!result) return;
+  const firstKept = result.items.findIndex(it => it.kept);
+  $("rows").innerHTML = result.items.map((it, k) => {
+    const e = it.erase;
+    const lvl = !e ? "" : (e.fake ? `<div title="${esc(`${e.font} · ${e.size}px · stretch ${e.stretch} · ${e.colour} · ${e.align}-aligned · fit ${e.fit_err}`)}">${esc(e.fake)}</div>` : `<span class="miss">${esc(e.error || "")}</span>`) +
+      `<span class="lvl ${e.ghost ? "ghost" : ""}" title="erase level · bg σ=${e.sigma}, outliers=${e.outlier_frac}">${e.level}${e.escalated_from ? " ↑" : ""}${e.ghost ? " ⚠" : ""}</span>` +
+      (e.font ? ` <span class="lvl">${esc(e.font)} ${e.size}px</span>` : "");
+    const sep = k === firstKept ? `<tr class="sep"><td colspan="4">Kept — not the subject's data (tick to replace anyway)</td></tr>` : "";
+    return sep + `<tr data-k="${k}" class="${it.kept ? "kept" : ""}">
+      <td><input type="checkbox" data-k="${k}" ${it.sel ? "checked" : ""}></td>
+      <td><span class="chip" style="background:${it.kept ? "#999" : color(it.label)}">${it.label.replace("_", " ")}</span></td>
+      <td>${esc(it.ocr_text || it.text)}<div class="why">${esc(it.why || "")}</div></td>
+      <td>${lvl}</td>
+    </tr>`;
+  }).join("");
+  document.querySelectorAll("#rows input[type=checkbox]").forEach(cb => cb.onchange = () => {
+    result.items[cb.dataset.k].sel = cb.checked; renderTabs(); if (view === "boxes") renderDoc();
+  });
+  document.querySelectorAll("#rows tr").forEach(tr => {
+    const k = tr.dataset.k;
+    tr.onmouseenter = () => document.querySelectorAll(`rect[data-k="${k}"]`).forEach(r => r.classList.add("hl"));
+    tr.onmouseleave = () => document.querySelectorAll(`rect[data-k="${k}"]`).forEach(r => r.classList.remove("hl"));
+  });
+}
+const norm = s => s.toLowerCase().replace(/[^0-9a-zäöüß]/g, "");
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+</script>
+</body>
+</html>

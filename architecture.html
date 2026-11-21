@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>No More Snooping Altman · Architecture</title>
+<style>
+html,body{margin:0;background:#fff}
+svg{display:block;width:100vw;height:auto;max-width:1920px;margin:0 auto}
+text{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",Helvetica,sans-serif}
+</style></head>
+<body>
+<svg id="d" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"></svg>
+<script>
+const INK = "#111114", MUTE = "#71717a", FAINT = "#a1a1aa";
+const COL = {cloud:"#4f46e5", local:"#059669", code:"#7c3aed", tool:"#d97706", ink:INK};
+let o = `
+<defs>
+  <filter id="sh" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#18181b" flood-opacity=".09"/></filter>
+  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 1L9 5L0 9" fill="none" stroke="${INK}" stroke-width="1.6"/></marker>
+  <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 1L9 5L0 9" fill="none" stroke="${COL.cloud}" stroke-width="1.6"/></marker>
+  <linearGradient id="gc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f5ff"/><stop offset="1" stop-color="#fafaff"/></linearGradient>
+  <linearGradient id="gd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2fbf7"/><stop offset="1" stop-color="#fbfefc"/></linearGradient>
+</defs>
+<rect width="1920" height="1080" fill="#ffffff"/>`;
+
+// ---------------------------------------------------------------- icons (drawn in a 40x40 box)
+const I = {
+  funnel: c => `<path d="M6 8h28l-11 13v10l-6 3V21z" fill="none" stroke="${c}" stroke-width="2.6" stroke-linejoin="round"/>`,
+  scan: c => `<path d="M6 13V7h6M28 7h6v6M34 27v6h-6M12 33H6v-6" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/><path d="M12 16h16M12 20h12M12 24h16" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`,
+  person: c => `<circle cx="20" cy="14" r="6" fill="none" stroke="${c}" stroke-width="2.6"/><path d="M8 34c1-7 6-11 12-11s11 4 12 11" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`,
+  eye: c => `<path d="M4 20s6-10 16-10 16 10 16 10-6 10-16 10S4 20 4 20z" fill="none" stroke="${c}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="20" cy="20" r="4.5" fill="${c}"/>`,
+  scale: c => `<path d="M20 6v28M12 34h16M8 12h24" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/><path d="M8 12l-5 10h10zM32 12l-5 10h10z" fill="none" stroke="${c}" stroke-width="2.3" stroke-linejoin="round"/>`,
+  eraser: c => `<path d="M17 33L6 22 22 6l12 12-15 15z" fill="none" stroke="${c}" stroke-width="2.6" stroke-linejoin="round"/><path d="M12 16l12 12M17 33h17" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`,
+  type: c => `<text x="20" y="29" text-anchor="middle" font-size="24" font-weight="700" fill="${c}" font-family="Georgia, serif">Aa</text>`,
+  check: c => `<circle cx="17" cy="17" r="10" fill="none" stroke="${c}" stroke-width="2.6"/><path d="M25 25l9 9" stroke="${c}" stroke-width="2.8" stroke-linecap="round"/><path d="M12.5 17l3 3 6-6" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  spark: c => `<path d="M20 3c1.6 9 7.4 15.4 17 17-9.6 1.6-15.4 8-17 17-1.6-9-7.4-15.4-17-17 9.6-1.6 15.4-8 17-17z" fill="${c}"/>`,
+  chat: c => `<path d="M7 9h26v17H17l-7 6v-6H7z" fill="none" stroke="${c}" stroke-width="2.6" stroke-linejoin="round"/><path d="M13 16h14M13 21h9" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>`,
+  lock: c => `<rect x="9" y="18" width="22" height="16" rx="3" fill="none" stroke="${c}" stroke-width="2.6"/><path d="M14 18v-5a6 6 0 0 1 12 0v5" fill="none" stroke="${c}" stroke-width="2.6"/>`,
+  chain: c => `<rect x="4" y="15" width="16" height="10" rx="5" fill="none" stroke="${c}" stroke-width="2.6"/><rect x="20" y="15" width="16" height="10" rx="5" fill="none" stroke="${c}" stroke-width="2.6"/>`,
+  shield: c => `<path d="M20 4l13 5v10c0 8-6 14-13 17C13 33 7 27 7 19V9z" fill="${c}"/><path d="M14 20l4 4 8-8" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>`,
+};
+const icon = (k, c, x, y, s = 1) => `<g transform="translate(${x},${y}) scale(${s})">${I[k](c)}</g>`;
+
+// ---------------------------------------------------------------- primitives
+function node(x, y, k, c, label, sub){   // 92x92 tile centred on (x,y), label below
+  return `<g filter="url(#sh)"><rect x="${x-46}" y="${y-46}" width="92" height="92" rx="24" fill="#fff" stroke="#ececef"/></g>
+  <rect x="${x-46}" y="${y-46}" width="92" height="92" rx="24" fill="${c}" opacity=".06"/>
+  ${icon(k, c, x-20, y-20)}
+  <text x="${x}" y="${y+78}" text-anchor="middle" font-size="19" font-weight="650" fill="${INK}">${label}</text>
+  <text x="${x}" y="${y+102}" text-anchor="middle" font-size="14.5" fill="${MUTE}">${sub}</text>`;
+}
+function pairNode(x, y){                  // analyst ∥ sentinel
+  const c = COL.local;
+  return `<g filter="url(#sh)"><rect x="${x-92}" y="${y-46}" width="184" height="92" rx="24" fill="#fff" stroke="#ececef"/></g>
+  <rect x="${x-92}" y="${y-46}" width="184" height="92" rx="24" fill="${c}" opacity=".06"/>
+  ${icon("person", c, x-62, y-20)}<line x1="${x}" y1="${y-24}" x2="${x}" y2="${y+24}" stroke="${c}" stroke-opacity=".3" stroke-width="2" stroke-dasharray="3 4"/>${icon("eye", c, x+22, y-20)}
+  <text x="${x}" y="${y+78}" text-anchor="middle" font-size="19" font-weight="650" fill="${INK}">Analyst + Sentinel</text>
+  <text x="${x}" y="${y+102}" text-anchor="middle" font-size="14.5" fill="${MUTE}">Gemma 4 · parallel · no tools</text>`;
+}
+function page(x, y, c, tag){
+  return `<g filter="url(#sh)"><path d="M${x-34} ${y-46}h48l20 20v72h-68z" fill="#fff" stroke="#e4e4e7"/></g>
+  <path d="M${x+14} ${y-46}v20h20" fill="none" stroke="#e4e4e7"/>
+  ${[0,1,2,3].map(i => `<rect x="${x-22}" y="${y-18+i*12}" width="${i===3?26:44}" height="4" rx="2" fill="${i<2 && c ? c : "#e4e4e7"}" opacity="${i<2 && c ? .85 : 1}"/>`).join("")}
+  <text x="${x}" y="${y+78}" text-anchor="middle" font-size="19" font-weight="650" fill="${INK}">${tag[0]}</text>
+  <text x="${x}" y="${y+102}" text-anchor="middle" font-size="14.5" fill="${MUTE}">${tag[1]}</text>`;
+}
+const arrow = (x1, x2, y) => `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${INK}" stroke-width="1.6" marker-end="url(#ar)" opacity=".55"/>`;
+
+// ---------------------------------------------------------------- title
+o += `<text x="96" y="104" font-size="46" font-weight="750" letter-spacing="-1.2" fill="${INK}">No More Snooping Altman</text>
+<text x="96" y="140" font-size="20" fill="${MUTE}">Use AI on your documents, without AI ever learning who you are.</text>`;
+[["Gemini · cloud", COL.cloud], ["Gemma 4 · on-device", COL.local], ["Deterministic code", COL.code], ["On-device tool", COL.tool]]
+  .forEach(([t, c], i) => { const x = [1150, 1309, 1513, 1702][i]; o += `<circle cx="${x}" cy="96" r="6" fill="${c}"/><text x="${x + 14}" y="101" font-size="15" fill="${MUTE}">${t}</text>`; });
+
+// ---------------------------------------------------------------- zones
+o += `<rect x="96" y="178" width="1728" height="196" rx="30" fill="url(#gc)" stroke="#e3e6fb"/>
+<text x="128" y="214" font-size="13" font-weight="700" letter-spacing="2.4" fill="${COL.cloud}">CLOUD</text>
+<rect x="96" y="470" width="1728" height="430" rx="30" fill="url(#gd)" stroke="#d6efe3"/>
+<text x="128" y="506" font-size="13" font-weight="700" letter-spacing="2.4" fill="${COL.local}">ON-DEVICE · YOUR MAC</text>`;
+
+// cloud agents
+function agent(x, y, w, k, name, sub){
+  return `<g filter="url(#sh)"><rect x="${x}" y="${y}" width="${w}" height="88" rx="22" fill="#fff" stroke="#dfe2fb"/></g>
+  <rect x="${x+18}" y="${y+18}" width="52" height="52" rx="15" fill="${COL.cloud}" opacity=".08"/>${icon(k, COL.cloud, x+24, y+24, .75 * 1.05)}
+  <text x="${x+86}" y="${y+40}" font-size="20" font-weight="650" fill="${INK}">${name}</text>
+  <text x="${x+86}" y="${y+64}" font-size="14.5" fill="${MUTE}">${sub}</text>`;
+}
+o += agent(640, 232, 380, "spark", "Coordinator · Gemini", "ADK LlmAgent · plans, calls tools, retries");
+o += agent(1430, 232, 330, "chat", "Assistant · Gemini", "answers questions · no tools");
+
+// ---------------------------------------------------------------- pipeline
+const Y = 640;
+const X = {in:200, gate:380, ocr:556, pair:770, pol:984, era:1160, ren:1336, ver:1512, out:1700};
+o += page(X.in, Y, null, ["Document", "image or PDF"]);
+o += node(X.gate, Y, "funnel", COL.code, "Intake gate", "type · size · bombs");
+o += node(X.ocr, Y, "scan", COL.tool, "OCR", "Apple Vision");
+o += pairNode(X.pair, Y);
+o += node(X.pol, Y, "scale", COL.code, "Policy engine", "code decides");
+o += node(X.era, Y, "eraser", COL.tool, "Eraser", "LaMa inpainting");
+o += node(X.ren, Y, "type", COL.tool, "Renderer", "font-matched fakes");
+o += node(X.ver, Y, "check", COL.local, "Verifier", "Gemma 4 + pixel diff");
+o += page(X.out, Y, COL.local, ["Anonymised copy", "same document, fake owner"]);
+o += arrow(X.in+44, X.gate-58, Y) + arrow(X.gate+56, X.ocr-58, Y) + arrow(X.ocr+56, X.pair-104, Y) + arrow(X.pair+102, X.pol-58, Y)
+   + arrow(X.pol+56, X.era-58, Y) + arrow(X.era+56, X.ren-58, Y) + arrow(X.ren+56, X.ver-58, Y) + arrow(X.ver+56, X.out-46, Y);
+
+// retry loop verifier → eraser
+o += `<path d="M${X.ver} ${Y-48} C ${X.ver} ${Y-96}, ${X.era} ${Y-96}, ${X.era} ${Y-52}" fill="none" stroke="${MUTE}" stroke-width="1.4" stroke-dasharray="4 5" marker-end="url(#ar)" opacity=".7"/>
+<text x="${(X.ver+X.era)/2}" y="${Y-92}" text-anchor="middle" font-size="13" fill="${MUTE}">retry if not clean</text>`;
+
+// ---------------------------------------------------------------- foundation
+function base(x, w, k, c, t, s){
+  return `<rect x="${x}" y="800" width="${w}" height="68" rx="18" fill="#fff" stroke="#e4e4e7"/>${icon(k, c, x+18, 814, .9)}
+  <text x="${x+66}" y="830" font-size="17" font-weight="650" fill="${INK}">${t}</text><text x="${x+66}" y="852" font-size="14" fill="${MUTE}">${s}</text>`;
+}
+o += base(136, 540, "lock", COL.local, "Local vault", "raw values live only here, in memory");
+o += base(690, 540, "scale", COL.code, "Owner-only scope", "name · contact · address · birth date · IDs");
+o += base(1244, 540, "chain", COL.code, "Hash-chained audit log", "every step traced, values scrubbed");
+
+// ---------------------------------------------------------------- privacy wall
+o += `<line x1="96" y1="422" x2="1824" y2="422" stroke="#e11d48" stroke-width="2.4" stroke-dasharray="10 8" opacity=".75"/>
+<g filter="url(#sh)"><rect x="118" y="398" width="438" height="48" rx="24" fill="#fff" stroke="#fecdd3"/></g>
+${icon("shield", "#e11d48", 130, 404, .9)}
+<text x="172" y="428" font-size="15" font-weight="750" letter-spacing="1.6" fill="#e11d48">PRIVACY WALL</text>
+<text x="306" y="428" font-size="14.5" fill="${MUTE}">egress firewall · tool allow-list</text>`;
+
+// coordinator tool calls (through the wall) + assistant
+const cx0 = 690, cy0 = 320;
+[[X.ocr, "load"], [X.pair, "analyse"], [X.era, "redact"], [X.ver, "verify"], [X.out, "finalize"]].forEach(([tx], i) => {
+  const sx = cx0 + i * 70;
+  o += `<path d="M${sx} ${cy0} C ${sx} ${cy0+110}, ${tx} ${Y-170}, ${tx} ${Y-56}" fill="none" stroke="${COL.cloud}" stroke-width="1.6" stroke-dasharray="5 6" opacity=".5" marker-end="url(#ab)"/>`;
+});
+o += `<path d="M1595 320 C 1595 430, ${X.out} 470, ${X.out} ${Y-56}" fill="none" stroke="${COL.cloud}" stroke-width="1.6" stroke-dasharray="5 6" opacity=".5" marker-end="url(#ab)"/>
+<rect x="1036" y="300" width="250" height="30" rx="15" fill="#fff" stroke="#dfe2fb"/>
+<text x="1161" y="320" text-anchor="middle" font-size="13.5" font-weight="600" fill="${COL.cloud}">tool calls · placeholders only</text>
+<rect x="1500" y="336" width="200" height="30" rx="15" fill="#fff" stroke="#dfe2fb"/>
+<text x="1600" y="356" text-anchor="middle" font-size="13.5" font-weight="600" fill="${COL.cloud}">pseudonymised text only</text>`;
+
+// ---------------------------------------------------------------- footer
+o += `<text x="960" y="980" text-anchor="middle" font-size="16" fill="${FAINT}" letter-spacing=".3">Google ADK  ·  Gemini  ·  Gemma 4 via Ollama  ·  Apple Vision OCR  ·  OpenCV + LaMa  ·  FastAPI + SSE  ·  SHA-256 audit chain</text>`;
+
+document.getElementById("d").innerHTML = o;
+</script>
+</body></html>

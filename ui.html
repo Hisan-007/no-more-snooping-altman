@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No More Snooping Altman</title>
+<style>
+:root {
+  --bg: #0b0d12; --panel: #12151d; --panel2: #171b25; --line: #242a37; --ink: #e8eaf0; --muted: #8a91a3; --dim: #5a6175;
+  --local: #34d399; --cloud: #60a5fa; --tool: #fbbf24; --policy: #c084fc; --bad: #f87171; --warn: #fb923c; --good: #34d399;
+  --radius: 12px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: radial-gradient(1200px 600px at 20% -10%, #1a2140 0%, transparent 60%), var(--bg); color: var(--ink);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--panel2); border-radius: 8px; padding: 7px 14px; transition: .15s; }
+button:hover { border-color: #3a4357; background: #1d2230; }
+button.primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); border: 0; font-weight: 600; box-shadow: 0 6px 20px #6366f155; }
+button.primary:hover { filter: brightness(1.1); }
+button:disabled { opacity: .4; cursor: default; }
+select { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+
+header { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+  position: sticky; top: 0; z-index: 10; background: #0b0d12cc; }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
+.logo .mark { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(90deg, var(--ink) 50%, #6366f1 50%); box-shadow: 0 0 18px #6366f188; }
+.tag { color: var(--muted); font-size: 13px; }
+.spacer { flex: 1; }
+.badge { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.status { font-size: 13px; color: var(--muted); min-width: 160px; text-align: right; }
+.status.live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 8px; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .2; } }
+
+main { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; padding: 18px 22px; }
+@media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.card h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.card .hd { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+
+/* ---------- document stage ---------- */
+.stage { position: relative; overflow: hidden; border-radius: 0 0 var(--radius) var(--radius); background: #fff; min-height: 420px; user-select: none; }
+.stage img { display: block; width: 100%; height: auto; }
+.stage .layer { position: absolute; inset: 0; }
+.stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.drop { min-height: 520px; display: grid; place-items: center; background: var(--panel2); color: var(--muted); text-align: center; border: 2px dashed var(--line); border-radius: 0 0 var(--radius) var(--radius); }
+.drop.over { border-color: #6366f1; color: var(--ink); }
+.drop b { color: var(--ink); font-size: 16px; }
+.scan { position: absolute; left: 0; right: 0; height: 120px; top: -120px; background: linear-gradient(180deg, transparent, #6366f133 60%, #818cf8cc 98%, transparent);
+  animation: scan 2.2s ease-in-out infinite; pointer-events: none; }
+@keyframes scan { 0% { top: -120px; } 100% { top: 100%; } }
+.handle { position: absolute; top: 0; bottom: 0; width: 3px; background: #6366f1; pointer-events: none; box-shadow: 0 0 12px #6366f1; }
+.handle::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #6366f1; color: #fff;
+  border-radius: 50%; width: 34px; height: 34px; display: grid; place-items: center; font-size: 16px; box-shadow: 0 4px 14px #0008; }
+.ptag { position: absolute; top: 10px; padding: 3px 10px; border-radius: 6px; background: #000b; color: #fff; font-size: 12px; pointer-events: none; }
+.tabs { display: flex; gap: 4px; margin-left: auto; }
+.tabs button { padding: 4px 10px; font-size: 12px; background: transparent; border-color: transparent; color: var(--muted); }
+.tabs button.on { background: var(--panel2); border-color: var(--line); color: var(--ink); }
+rect.pii { animation: pop .45s cubic-bezier(.2, 1.6, .4, 1) both; transform-box: fill-box; transform-origin: center; }
+@keyframes pop { from { opacity: 0; transform: scale(1.6); } }
+.legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); padding: 8px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* ---------- persona + chat ---------- */
+.row2 { display: grid; grid-template-columns: 1fr 1.3fr; gap: 18px; margin-top: 18px; }
+@media (max-width: 1400px) { .row2 { grid-template-columns: 1fr; } }
+.persona { padding: 16px; position: relative; overflow: hidden; }
+.idcard { border-radius: 14px; padding: 16px 18px; background: linear-gradient(135deg, #1e2a5a, #3b2a6b 55%, #2a1f4a); border: 1px solid #ffffff22;
+  box-shadow: 0 10px 30px #0008, inset 0 1px 0 #ffffff22; position: relative; }
+.idcard::after { content: ""; position: absolute; inset: 0; border-radius: 14px; background: repeating-linear-gradient(115deg, #ffffff06 0 2px, transparent 2px 9px); pointer-events: none; }
+.idcard .k { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: #c7cbe0aa; }
+.idcard .v { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.idcard .name { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.idcard .seal { position: absolute; right: 16px; top: 14px; font-size: 11px; color: #c7cbe0; border: 1px solid #c7cbe066; padding: 2px 8px; border-radius: 999px; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.chat { display: flex; flex-direction: column; height: 100%; min-height: 300px; }
+.msgs { flex: 1; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; max-height: 420px; }
+.msg { max-width: 92%; padding: 9px 12px; border-radius: 12px; white-space: pre-wrap; }
+.msg.me { align-self: flex-end; background: #312e81; }
+.msg.ai { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); }
+.msg details { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.msg details summary { cursor: pointer; color: var(--cloud); }
+.msg details pre { white-space: pre-wrap; background: #0b0d12; padding: 8px; border-radius: 8px; color: #c9d1e4; max-height: 200px; overflow: auto; }
+.ask { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
+.ask input { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+mark.swap { background: #34d39933; color: #a7f3d0; border-radius: 3px; padding: 0 2px; }
+
+/* ---------- trace ---------- */
+.lanes { position: relative; padding: 8px 14px 6px; }
+.zone { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 6px 0 2px 2px; display: flex; gap: 8px; align-items: center; }
+.lane { display: grid; grid-template-columns: 110px 1fr; align-items: center; height: 30px; }
+.lane .lbl { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.lane .track { position: relative; height: 22px; background: #ffffff05; border-radius: 6px; overflow: hidden; }
+.bar { position: absolute; top: 3px; height: 16px; border-radius: 4px; font-size: 10px; line-height: 16px; padding: 0 5px; color: #0b0d12; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; min-width: 3px; }
+.bar.agent { top: 1px; height: 20px; opacity: .14; cursor: default; }
+.bar.running { background-image: linear-gradient(90deg, transparent, #ffffff55, transparent) !important; background-size: 60px 100%; animation: shimmer 1s linear infinite; }
+@keyframes shimmer { from { background-position: -60px 0; } to { background-position: 400px 0; } }
+.bar.err { outline: 2px solid var(--bad); }
+.wall { display: grid; grid-template-columns: 110px 1fr; align-items: center; height: 34px; margin: 4px 0; }
+.wall .lbl { font-size: 11px; font-weight: 700; color: var(--policy); letter-spacing: .06em; }
+.wall .track { position: relative; height: 26px; border-top: 2px dashed #c084fc66; border-bottom: 2px dashed #c084fc66;
+  background: repeating-linear-gradient(135deg, #c084fc10 0 6px, transparent 6px 12px); }
+.pm { position: absolute; top: 4px; width: 14px; height: 14px; margin-left: -7px; transform: rotate(45deg); border-radius: 3px; cursor: pointer; box-shadow: 0 0 10px currentColor; }
+.axis { display: grid; grid-template-columns: 110px 1fr; font-size: 10px; color: var(--dim); }
+.axis .ticks { position: relative; height: 14px; }
+.axis .ticks span { position: absolute; transform: translateX(-50%); }
+.feed { max-height: 330px; overflow: auto; padding: 6px 0; font-size: 12.5px; border-top: 1px solid var(--line); }
+.ev { display: grid; grid-template-columns: 54px 92px 1fr; gap: 8px; padding: 4px 14px; align-items: baseline; cursor: default; }
+.ev:hover { background: #ffffff06; }
+.ev .t { color: var(--dim); font-variant-numeric: tabular-nums; }
+.ev .who { font-weight: 600; }
+.ev .d { color: #c9d1e4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev.click { cursor: pointer; }
+.ev.click .d::after { content: "  ⤢ inspect"; color: var(--cloud); font-size: 11px; }
+.pill { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 6px; letter-spacing: .04em; }
+.p-ALLOW { background: #34d39922; color: var(--good); } .p-BLOCK { background: #f8717133; color: var(--bad); }
+.p-QUARANTINE { background: #fb923c33; color: var(--warn); } .p-REWRITE { background: #60a5fa33; color: var(--cloud); }
+.p-OVERRIDE, .p-DROP { background: #c084fc33; color: var(--policy); }
+.audit { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.chain { font-size: 13px; }
+.chain.ok { color: var(--good); } .chain.bad { color: var(--bad); }
+.report { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; white-space: pre-wrap; color: #c9d1e4; display: none; }
+
+/* ---------- modal ---------- */
+.modal { position: fixed; inset: 0; background: #000a; display: none; place-items: center; z-index: 50; }
+.modal.on { display: grid; }
+.modal .box { width: min(900px, 92vw); max-height: 84vh; display: flex; flex-direction: column; }
+.modal pre { margin: 0; padding: 14px; overflow: auto; white-space: pre-wrap; font-size: 12px; color: #c9d1e4; background: #0b0d12; border-radius: 0 0 var(--radius) var(--radius); }
+.verdict { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(30px); opacity: 0; background: var(--panel2); border: 1px solid var(--line);
+  padding: 10px 16px; border-radius: 10px; transition: .3s; z-index: 60; box-shadow: 0 10px 30px #000a; }
+.toast.on { opacity: 1; transform: translateX(-50%); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><span class="mark"></span>No More Snooping Altman</div>
+  <span class="tag">your document's privacy twin</span>
+  <div class="spacer"></div>
+  <span class="badge"><span class="dot" style="background:var(--local)"></span>Gemma 4 · on this Mac</span>
+  <span class="badge"><span class="dot" style="background:var(--cloud)"></span>Gemini · cloud, placeholders only</span>
+  <select id="sample"></select>
+  <button id="runSample" class="primary">Run agents</button>
+  <label class="badge" style="cursor:pointer">Upload…<input type="file" id="file" accept="image/*,application/pdf" hidden></label>
+  <span class="status" id="status">idle</span>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <div class="hd"><h3>Document</h3><span class="small muted" id="docInfo"></span>
+        <div class="tabs" id="tabs">
+          <button data-v="original" class="on">Original</button>
+          <button data-v="anonymized">Anonymised</button>
+          <button data-v="compare">Compare</button>
+        </div>
+      </div>
+      <div id="stage" class="drop"><div><b>Drop a document here</b><br>or pick a sample and press <i>Run agents</i></div></div>
+      <div class="legend">
+        <span><i class="sw" style="background:#6366f1"></i>your data → replaced</span>
+        <span><i class="sw" style="border:1.5px dashed #9aa3b8"></i>someone else's → kept</span>
+        <span><i class="sw" style="background:repeating-linear-gradient(135deg,#f87171 0 3px,transparent 3px 6px)"></i>prompt injection → quarantined</span>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="card persona">
+        <h3 style="margin-bottom:12px">Result</h3>
+        <div id="persona" class="muted small">After anonymisation, the identity the world sees instead of you appears here: consistent across the whole document.</div>
+      </div>
+      <div class="card chat">
+        <div class="hd"><h3>Ask Gemini — privately</h3><span class="small muted">Gemini only ever talks to your anonymised copy</span><div class="spacer"></div>
+        <button id="red" class="small" disabled title="Bypass the pseudonymiser and try to send your real data to the cloud">🔴 Red-team: leak my data</button></div>
+        <div class="msgs" id="msgs"><div class="muted small">Ask about your document. Your real name, address and IDs are swapped for the anonymised copy's before anything leaves this Mac, and swapped back when the answer arrives.</div></div>
+        <div class="ask"><input id="q" placeholder="e.g. What does my ferritin value mean and what should I ask my doctor?" disabled><button id="send" disabled>Ask</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <div class="hd"><h3>Agents · live trace</h3><span class="small muted" id="traceInfo">ADK · every span is in the audit log</span></div>
+      <div class="lanes" id="lanes"></div>
+      <div class="feed" id="feed"></div>
+      <div class="report" id="report"></div>
+      <div class="audit">
+        <span class="chain" id="chain">audit log: —</span>
+        <div class="spacer"></div>
+        <button id="verify" disabled>Verify chain</button>
+        <button id="tamper" disabled>Tamper test</button>
+        <button id="dl" disabled>Download log</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal"><div class="card box">
+  <div class="hd"><h3 id="mTitle">Egress inspector</h3><div class="spacer"></div><button id="mClose">Close</button></div>
+  <div class="verdict" id="mVerdict"></div>
+  <pre id="mBody"></pre>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const LANES = [
+  { zone: "On this Mac", lanes: [["analyst", "Analyst", "local"], ["sentinel", "Sentinel", "local"], ["verifier", "Verifier", "local"], ["tool", "Tools", "tool"]] },
+  { wall: true },
+  { zone: "Cloud", lanes: [["coordinator", "Coordinator", "cloud"], ["assistant", "Assistant", "cloud"]] },
+];
+const ZC = { local: "var(--local)", cloud: "var(--cloud)", tool: "var(--tool)" };
+const PC = { ALLOW: "#34d399", BLOCK: "#f87171", QUARANTINE: "#fb923c", REWRITE: "#60a5fa", OVERRIDE: "#c084fc", DROP: "#c084fc" };
+const LCOL = { name: "#6366f1", address: "#8b5cf6", birth_date: "#ec4899", id_number: "#14b8a6", phone: "#0ea5e9", email: "#22c55e", iban: "#f59e0b" };
+
+let run = null, events = [], spans = {}, doc = null, view = "original", split = 50, es = null, t0 = 0, scanning = false, ended = false;
+
+fetch("/samples").then(r => r.json()).then(d => d.samples.forEach(n => $("sample").add(new Option(n.replace(/^SAMPLE_|\.png$/g, ""), n))));
+
+// ------------------------------------------------------------------ start a run
+async function start(form) {
+  reset();
+  $("status").textContent = "starting…"; $("status").classList.add("live");
+  const r = await fetch("/agent/run", { method: "POST", body: form });
+  if (!r.ok) { $("status").textContent = "error: " + (await r.text()); return; }
+  run = (await r.json()).run_id;
+  t0 = performance.now();
+  es = new EventSource(`/agent/events/${run}`);
+  es.onmessage = e => onEvent(JSON.parse(e.data));
+  es.addEventListener("end", () => es.close());
+  tick();
+}
+$("runSample").onclick = () => { const f = new FormData(); f.append("sample", $("sample").value); start(f); };
+$("file").onchange = () => { if (!$("file").files.length) return; const f = new FormData(); f.append("file", $("file").files[0]); start(f); };
+const stageEl = $("stage");
+["dragover", "dragenter"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); stageEl.classList.add("over"); }));
+document.addEventListener("dragleave", () => stageEl.classList.remove("over"));
+document.addEventListener("drop", e => { e.preventDefault(); stageEl.classList.remove("over");
+  if (e.dataTransfer.files.length) { const f = new FormData(); f.append("file", e.dataTransfer.files[0]); start(f); } });
+
+function reset() {
+  es?.close(); events = []; spans = {}; doc = null; view = "original"; ended = false; scanning = true;
+  $("feed").innerHTML = ""; $("report").style.display = "none"; $("chain").textContent = "audit log: recording…"; $("chain").className = "chain";
+  ["verify", "tamper", "dl"].forEach(i => $(i).disabled = true);
+  $("persona").innerHTML = '<span class="muted small">Waiting for the agents…</span>';
+  $("msgs").innerHTML = '<div class="muted small">Available once the document is anonymised.</div>';
+  $("q").disabled = $("send").disabled = true;
+  stageEl.className = "stage"; stageEl.innerHTML = '<div style="height:560px;background:var(--panel2)"></div><div class="scan"></div>';
+}
+
+// ------------------------------------------------------------------ events
+const STAGE_TEXT = { loaded: "document read on-device", analysed: "found your data", redacted: "anonymised copy written", verified: "verified", done: "done" };
+function onEvent(ev) {
+  events.push(ev);
+  if (["agent_start", "model_start", "tool_start"].includes(ev.kind)) spans[ev.span] = { ...ev, end: null };
+  if (["agent_end", "model_end", "tool_end"].includes(ev.kind) && spans[ev.span]) Object.assign(spans[ev.span], { end: ev.ts, out: ev.detail, err: ev.error, tokens: ev.tokens });
+  if (ev.kind === "state") { loadDoc(ev.doc_id, ev.name); $("status").textContent = STAGE_TEXT[ev.name] || ev.name; }
+  if (ev.kind === "run_end") onEnd(ev);
+  feed(ev);
+  if (ended) drawLanes();
+}
+
+function feed(ev) {
+  let who = ev.agent || ev.zone, d = "", cls = "", col = ZC[ev.zone] || "var(--muted)";
+  switch (ev.kind) {
+    case "run_start": who = "run"; d = "▶ " + ev.detail; break;
+    case "run_end": who = "run"; d = ev.error ? "✗ " + ev.detail : "■ coordinator finished — report below"; break;
+    case "agent_start": return;
+    case "agent_end": return;
+    case "model_start": d = `→ ${ev.name} · ${ev.chars} chars ${ev.zone === "cloud" ? "(leaves the Mac)" : "(stays on the Mac)"}`; cls = ev.zone === "cloud" ? "click" : ""; break;
+    case "model_end": d = "← " + (ev.detail || "").replace(/\s+/g, " "); col = ZC[ev.zone]; break;
+    case "tool_start": who = "tool"; d = `${ev.name}(${ev.detail})`; col = ZC.tool; break;
+    case "tool_end": who = "tool"; d = `${ev.name} ✓ ${ev.ms} ms · ${(ev.detail || "").slice(0, 160)}`; col = ZC.tool; cls = "click"; break;
+    case "policy": who = "policy"; col = "var(--policy)"; d = `<span class="pill p-${ev.decision}">${ev.decision}</span>${esc(ev.name)} · ${esc(ev.detail)}`; break;
+    case "state": return;
+  }
+  if (ev.kind === "policy" && ev.decision === "ALLOW" && ev.name === "tool_allowlist") return;  // keep the feed readable
+  const el = document.createElement("div");
+  el.className = "ev " + cls;
+  el.innerHTML = `<span class="t">${ev.ts.toFixed(1)}s</span><span class="who" style="color:${col}">${esc(who)}</span><span class="d">${ev.kind === "policy" ? d : esc(d)}</span>`;
+  if (cls === "click") el.onclick = () => inspect(ev);
+  const f = $("feed"), stick = f.scrollTop + f.clientHeight >= f.scrollHeight - 30;
+  f.appendChild(el);
+  if (stick) f.scrollTop = f.scrollHeight;
+}
+
+function onEnd(ev) {
+  ended = true; scanning = false; $("status").classList.remove("live");
+  $("status").textContent = ev.error ? "failed" : `done in ${ev.ts.toFixed(0)}s`;
+  if (ev.detail && !ev.error) { $("report").style.display = "block"; $("report").innerHTML = "<b>Coordinator report</b>\n" + md(ev.detail); }
+  ["verify", "tamper", "dl"].forEach(i => $(i).disabled = false);
+  verifyChain(true);
+}
+
+const md = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, '<mark class="swap">$1</mark>').replace(/^\s*[*-]\s+/gm, "• ");
+
+// ------------------------------------------------------------------ inspector
+function inspect(ev) {
+  $("modal").classList.add("on");
+  if (ev.kind === "model_start") {
+    $("mTitle").textContent = `Egress inspector · ${ev.agent} → ${ev.name}`;
+    const pol = events.filter(e => e.kind === "policy" && e.name === "egress_firewall" && Math.abs(e.ts - ev.ts) < 0.5 && e.agent === ev.agent).pop();
+    $("mVerdict").innerHTML = `Exactly what left this Mac (${ev.chars} chars). Egress firewall: <span class="pill p-${pol?.decision || "ALLOW"}">${pol?.decision || "ALLOW"}</span>` +
+      ` ${esc(pol?.detail || "")}. Placeholders like <b>NAME_1</b> stand for data that stayed local.`;
+    $("mBody").innerHTML = hl(esc(ev.payload || ""));
+  } else {
+    $("mTitle").textContent = `Tool result · ${ev.name}`;
+    $("mVerdict").textContent = "What the tool handed back to the cloud coordinator — placeholders and counts only.";
+    let body = ev.detail; try { body = JSON.stringify(JSON.parse(ev.detail), null, 2); } catch (e) {}
+    $("mBody").innerHTML = hl(esc(body));
+  }
+}
+const hl = s => s.replace(/\b(NAME|ADDR|DOB|ID|PHONE|EMAIL|IBAN)_\d+\b/g, '<mark class="swap">$&</mark>');
+$("mClose").onclick = () => $("modal").classList.remove("on");
+$("modal").onclick = e => { if (e.target.id === "modal") $("modal").classList.remove("on"); };
+
+// ------------------------------------------------------------------ swimlanes
+function tick() {
+  drawLanes();
+  if (!ended) requestAnimationFrame(tick);
+}
+function drawLanes() {
+  const now = ended ? Math.max(...events.map(e => e.ts), 1) : (performance.now() - t0) / 1000;
+  const T = Math.max(10, now * 1.05);
+  const pct = t => (t / T * 100).toFixed(2) + "%";
+  const all = Object.values(spans);
+  let html = "";
+  for (const g of LANES) {
+    if (g.wall) {
+      const marks = events.filter(e => e.kind === "policy").map(e =>
+        `<i class="pm" title="${esc(e.decision + " · " + e.name + ": " + e.detail)}" style="left:${pct(e.ts)};background:${PC[e.decision] || "#999"};color:${PC[e.decision] || "#999"}"></i>`).join("");
+      html += `<div class="wall"><span class="lbl">PRIVACY WALL</span><div class="track">${marks}</div></div>`;
+      continue;
+    }
+    html += `<div class="zone"><span class="dot" style="background:${ZC[g.lanes[0][2]]}"></span>${g.zone}</div>`;
+    for (const [key, label, zone] of g.lanes) {
+      const mine = all.filter(s => key === "tool" ? s.kind === "tool_start" : s.agent === key && s.kind !== "tool_start");
+      const bars = mine.map(s => {
+        const end = s.end ?? now, w = Math.max(0.4, (end - s.ts) / T * 100);
+        const isAgent = s.kind === "agent_start";
+        const txt = s.kind === "tool_start" ? s.name.replace("_document", "") : isAgent ? "" : (s.zone === "cloud" ? "Gemini" : "Gemma");
+        return `<div class="bar ${isAgent ? "agent" : ""} ${s.end == null && !isAgent ? "running" : ""} ${s.err ? "err" : ""}" data-span="${s.span}"
+          style="left:${pct(s.ts)};width:${w.toFixed(2)}%;background:${ZC[zone]}" title="${esc((s.name || "") + " · " + ((end - s.ts).toFixed(1)) + "s")}">${txt}</div>`;
+      }).join("");
+      html += `<div class="lane"><span class="lbl"><span class="dot" style="background:${ZC[zone]}"></span>${label}</span><div class="track">${bars}</div></div>`;
+    }
+  }
+  const step = T > 60 ? 10 : T > 25 ? 5 : 2;
+  let ticks = ""; for (let t = 0; t <= T; t += step) ticks += `<span style="left:${pct(t)}">${t}s</span>`;
+  html += `<div class="axis"><span></span><div class="ticks">${ticks}</div></div>`;
+  $("lanes").innerHTML = html;
+  $("lanes").querySelectorAll(".bar[data-span]").forEach(b => b.onclick = () => {
+    const s = spans[b.dataset.span];
+    if (s?.kind === "model_start" && s.zone === "cloud") inspect(s);
+    else if (s?.kind === "tool_start") { const end = events.find(e => e.kind === "tool_end" && e.span === s.span); if (end) inspect(end); }
+  });
+}
+
+// ------------------------------------------------------------------ document
+async function loadDoc(id, stage) {
+  const d = await (await fetch(`/agent/doc/${id}`)).json();
+  const first = !doc;
+  doc = d;
+  $("docInfo").textContent = `${d.width}×${d.height}` + (d.subject_ph ? ` · subject ${d.subject_ph} · ${d.items.length} to replace · ${d.kept.length} kept · ${d.quarantined.length} quarantined` : "");
+  if (stage === "loaded") scanning = true;
+  if (stage === "analysed") scanning = false;
+  if (stage === "redacted" && view !== "compare") { view = "compare"; split = 100; animateSplit(); }
+  if (stage === "done") persona();
+  renderStage(first || stage === "analysed");
+}
+function animateSplit() {
+  const s0 = performance.now();
+  const step = () => { const k = Math.min(1, (performance.now() - s0) / 1400); split = 100 - 50 * (1 - Math.pow(1 - k, 3)); setSplit(); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function overlay(anim) {
+  const { width: W, height: H } = doc;
+  let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+  doc.quarantined.forEach(q => { const [x1, y1, x2, y2] = q.box;
+    s += `<rect x="${x1 - 4}" y="${y1 - 4}" width="${x2 - x1 + 8}" height="${y2 - y1 + 8}" fill="url(#hatch)" stroke="#f87171" stroke-width="2.5" rx="3"/>
+          <text x="${x2 + 10}" y="${y1 + (y2 - y1) * .8}" fill="#dc2626" font-size="16" font-weight="700">⚠ prompt injection · quarantined</text>`; });
+  doc.kept.forEach(k => { const [x1, y1, x2, y2] = k.box;
+    s += `<rect x="${x1 - 3}" y="${y1 - 3}" width="${x2 - x1 + 6}" height="${y2 - y1 + 6}" fill="none" stroke="#9aa3b8" stroke-width="1.6" stroke-dasharray="6 4" rx="3"><title>kept: ${esc(k.why)}</title></rect>`; });
+  doc.items.forEach((it, i) => { const [x1, y1, x2, y2] = it.box, c = LCOL[it.label] || "#6366f1";
+    s += `<rect class="${anim ? "pii" : ""}" style="animation-delay:${i * 70}ms" x="${x1 - 3}" y="${y1 - 3}" width="${x2 - x1 + 6}" height="${y2 - y1 + 6}" fill="${c}33" stroke="${c}" stroke-width="2.5" rx="3"><title>${esc(it.ph + " · " + it.why)}</title></rect>`; });
+  return s + `<defs><pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="4" height="8" fill="#f8717155"/></pattern></defs></svg>`;
+}
+function renderStage(anim = false) {
+  if (!doc) return;
+  stageEl.className = "stage";
+  document.querySelectorAll("#tabs button").forEach(b => { b.classList.toggle("on", b.dataset.v === view); b.disabled = b.dataset.v !== "original" && !doc.anonymized; });
+  const scan = scanning ? '<div class="scan"></div>' : "";
+  if (view === "original" || !doc.anonymized) {
+    stageEl.innerHTML = `<img src="${doc.original}">${doc.items ? overlay(anim) : ""}${scan}`;
+  } else if (view === "anonymized") {
+    stageEl.innerHTML = `<img src="${doc.anonymized}">`;
+  } else {
+    stageEl.innerHTML = `<img src="${doc.original}"><div class="layer" id="after"><img src="${doc.anonymized}"></div>
+      <div class="handle" id="handle"></div><span class="ptag" style="left:10px">original</span><span class="ptag" style="right:10px">anonymised</span>`;
+    setSplit();
+    const move = e => { const r = stageEl.getBoundingClientRect(); split = Math.max(0, Math.min(100, ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) / r.width * 100)); setSplit(); };
+    let drag = false;
+    stageEl.onmousedown = e => { drag = true; move(e); }; window.onmouseup = () => drag = false;
+    stageEl.onmousemove = e => drag && move(e); stageEl.ontouchstart = stageEl.ontouchmove = move;
+  }
+}
+function setSplit() { const a = $("after"), h = $("handle"); if (a) a.style.clipPath = `inset(0 0 0 ${split}%)`; if (h) h.style.left = split + "%"; }
+$("tabs").onclick = e => { const v = e.target.dataset?.v; if (v && !e.target.disabled) { view = v; renderStage(); } };
+
+function persona() {
+  const p = doc.persona, row = (k, v) => v ? `<div class="k">${k}</div><div class="v">${esc(v)}</div>` : "";
+  $("persona").innerHTML = `<div class="idcard"><span class="seal">synthetic identity</span>
+    <div class="k">Name</div><div class="name">${esc(p.name || "—")}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;margin-top:8px">
+      ${row("Born", p.birth_date)}${row("Address", p.address_full || p.address)}${row("Phone", p.phone)}${row("Email", p.email)}${row("ID / reference", p.id_number)}${row("IBAN", p.iban)}
+    </div></div>
+    <div class="small muted" style="margin-top:10px">Consistent everywhere in the document · real ↔ fake mapping never leaves this Mac · ${doc.verify?.pixels_changed_outside_boxes === 0 ? "✓ 0 pixels changed outside the replaced boxes" : ""}</div>`;
+  $("q").disabled = $("send").disabled = $("red").disabled = false;
+  $("msgs").innerHTML = '<div class="muted small">Ask anything about your document — in your own words, with your real name if you like.</div>';
+}
+
+// ------------------------------------------------------------------ chat
+async function ask() {
+  const q = $("q").value.trim(); if (!q || !doc) return;
+  $("q").value = ""; $("send").disabled = true;
+  const m = $("msgs");
+  m.insertAdjacentHTML("beforeend", `<div class="msg me">${esc(q)}</div>`);
+  const pending = document.createElement("div"); pending.className = "msg ai muted"; pending.textContent = "Gemini is thinking… (talking to your anonymised copy)"; m.appendChild(pending);
+  m.scrollTop = m.scrollHeight;
+  try {
+    const r = await fetch("/agent/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc_id: doc.doc_id, question: q }) });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const a = await r.json();
+    pending.className = "msg ai";
+    pending.innerHTML = `${esc(a.answer)}<details><summary>🔒 what Gemini actually saw and said (${a.swapped_out} value(s) swapped out, ${a.swapped_back} swapped back)</summary>
+      <div class="small" style="margin:6px 0 2px">Your question, as sent:</div><pre>${esc(a.sent.split("Question: ").pop())}</pre>
+      <div class="small" style="margin:6px 0 2px">Gemini's answer, before re-identification:</div><pre>${esc(a.cloud_answer)}</pre></details>`;
+  } catch (e) { pending.textContent = "Error: " + e.message; }
+  await catchUp();
+  $("send").disabled = false; m.scrollTop = m.scrollHeight;
+}
+$("red").onclick = async () => {
+  const m = $("msgs");
+  m.insertAdjacentHTML("beforeend", `<div class="msg me" style="background:#7f1d1d">🔴 Red-team: sending the raw document + my real name to Gemini, pseudonymiser switched off…</div>`);
+  const r = await (await fetch("/agent/redteam", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc_id: doc.doc_id, question: "x" }) })).json();
+  await catchUp();
+  m.insertAdjacentHTML("beforeend", `<div class="msg ai" style="border-color:#f87171">${r.blocked ? "⛔ <b>Blocked by the egress firewall</b> before it left this Mac." : "⚠ not blocked"}<div class="small muted" style="margin-top:6px">${esc(r.detail || "")}</div></div>`);
+  m.scrollTop = m.scrollHeight;
+  toast(r.blocked ? "Egress firewall blocked the request — nothing left the Mac." : "Request was not blocked!");
+};
+$("send").onclick = ask; $("q").onkeydown = e => { if (e.key === "Enter") ask(); };
+
+// ------------------------------------------------------------------ audit
+async function catchUp() {  // events added after the live stream closed (chat, red-team)
+  if (!run) return;
+  for (const ev of await (await fetch(`/agent/events_since/${run}?since=${events.length}`)).json()) onEvent(ev);
+}
+async function verifyChain(quiet) {
+  const v = await (await fetch(`/agent/audit/${run}/verify`)).json();
+  $("chain").className = "chain " + (v.ok ? "ok" : "bad");
+  $("chain").textContent = v.ok ? `✓ audit log: ${v.entries} entries, hash chain intact` : `✗ chain broken at entry ${v.broken_at}`;
+  if (!quiet) toast(v.ok ? "Hash chain verified — no entry was altered." : "Tampering detected!");
+}
+$("verify").onclick = () => verifyChain(false);
+$("tamper").onclick = async () => {
+  const v = await (await fetch(`/agent/audit/${run}/tamper`, { method: "POST" })).json();
+  $("chain").className = "chain bad";
+  $("chain").textContent = `✗ tampered copy: entry #${v.edited_seq} rewritten → chain breaks at entry ${v.broken_at}`;
+  toast(`An attacker edited entry #${v.edited_seq} to hide a security event — the hash chain caught it.`);
+};
+$("dl").onclick = () => location.href = `/agent/audit/${run}`;
+function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("on"); setTimeout(() => el.classList.remove("on"), 3500); }
+drawLanes();
+</script>
+</body>
+</html>

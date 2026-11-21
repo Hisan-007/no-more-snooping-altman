@@ -1,0 +1,8 @@
+.venv/
+.venv39/
+__pycache__/
+.DS_Store
+uploads/
+audit/
+# real personal document - never commit
+Docs/SAMPLE_Invoice.png
