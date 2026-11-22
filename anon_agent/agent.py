@@ -10,7 +10,7 @@
                                    question is pseudonymised before it leaves, the answer is
                                    re-identified on the way back.
 
-Failover (fallback.py): on 503/429 a cloud agent switches at once to CLOUD_FALLBACK_MODEL; the
+Failover (fallback.py): on 503/429 or a hang a cloud agent switches at once to CLOUD_FALLBACK_MODEL; the
 assistant then to local Gemma. If no cloud model is left, the coordinator's procedure finishes
 as plain code on-device (pipeline.run_scripted).
 
