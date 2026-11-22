@@ -16,7 +16,7 @@ from . import specialists as S
 from . import tools as T
 from .agent import assistant, coordinator
 from .fallback import CloudUnavailable
-from .plugins import GuardPlugin, TracePlugin
+from .plugins import GuardPlugin, TracePlugin, zone_of
 from .vault import VAULT
 
 # "cloud" (default): the Gemini coordinator plans the run. "script": run its fixed procedure as
@@ -176,14 +176,17 @@ class Chat:
             if self.session is None:
                 self.session = await self.runner.session_service.create_session(app_name="assist", user_id="user")
                 sent = f"<document>\n{self.doc_text()}\n</document>\n\nQuestion: {sent}"
-            answer = ""
+            answer, model = "", assistant.canonical_model.model
             async for ev in self.runner.run_async(user_id="user", session_id=self.session.id, new_message=types.Content(
                     role="user", parts=[types.Part(text=sent)])):
                 if ev.author == "assistant" and _text(ev):
                     answer = _text(ev)
+                    model = (ev.custom_metadata or {}).get("served_by", model)  # set by FallbackLlm
             back, m = self.doc.reidentify(answer)
             run.emit("policy", agent="assistant", zone="policy", name="reidentify", decision="REWRITE",
                      detail=f"{m} stand-in(s) in the answer mapped back to your real data, on this Mac")
-            return {"sent": VAULT.scrub_all(sent), "cloud_answer": answer, "answer": back, "swapped_out": n, "swapped_back": m}
+            # answered_by / answered_zone: the UI must not claim Gemini when local Gemma answered (failover)
+            return {"sent": VAULT.scrub_all(sent), "cloud_answer": answer, "answer": back, "swapped_out": n, "swapped_back": m,
+                    "answered_by": model, "answered_zone": zone_of("assistant", model)}
         finally:
             A.RUN_ID.reset(token)

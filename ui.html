@@ -429,16 +429,17 @@ async function ask() {
   $("q").value = ""; $("send").disabled = true;
   const m = $("msgs");
   m.insertAdjacentHTML("beforeend", `<div class="msg me">${esc(q)}</div>`);
-  const pending = document.createElement("div"); pending.className = "msg ai muted"; pending.textContent = "Gemini is thinking… (talking to your anonymised copy)"; m.appendChild(pending);
+  const pending = document.createElement("div"); pending.className = "msg ai muted"; pending.textContent = "Thinking… (talking to your anonymised copy)"; m.appendChild(pending);
   m.scrollTop = m.scrollHeight;
   try {
     const r = await fetch("/agent/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc_id: doc.doc_id, question: q }) });
     if (!r.ok) throw new Error((await r.json()).detail);
     const a = await r.json();
     pending.className = "msg ai";
-    pending.innerHTML = `${esc(a.answer)}<details><summary>🔒 what Gemini actually saw and said (${a.swapped_out} value(s) swapped out, ${a.swapped_back} swapped back)</summary>
+    const who = a.answered_zone === "local" ? "Gemma (on this Mac, Gemini unavailable)" : "Gemini";
+    pending.innerHTML = `${esc(a.answer)}<details><summary>🔒 what ${who} actually saw and said (${a.swapped_out} value(s) swapped out, ${a.swapped_back} swapped back)</summary>
       <div class="small" style="margin:6px 0 2px">Your question, as sent:</div><pre>${esc(a.sent.split("Question: ").pop())}</pre>
-      <div class="small" style="margin:6px 0 2px">Gemini's answer, before re-identification:</div><pre>${esc(a.cloud_answer)}</pre></details>`;
+      <div class="small" style="margin:6px 0 2px">${who}'s answer, before re-identification:</div><pre>${esc(a.cloud_answer)}</pre></details>`;
   } catch (e) { pending.textContent = "Error: " + e.message; }
   await catchUp();
   $("send").disabled = false; m.scrollTop = m.scrollHeight;

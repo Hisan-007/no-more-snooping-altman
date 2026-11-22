@@ -106,6 +106,7 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
 .msg em{display:block;font-style:normal;font-size:11px;font-weight:600;color:var(--faint);margin-bottom:4px;letter-spacing:.3px}
 .msg.cloud{background:#eef2ff} .msg.cloud em{color:var(--run)}
 .msg.you{background:#ecfdf5} .msg.you em{color:var(--ok)}
+.msg.local{background:#f5f4f0} .msg.local em{color:#059669}
 .ask{display:flex;gap:8px;margin-top:12px}
 .ask input{flex:1;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
 .mini{display:flex;gap:14px;margin-top:12px}
@@ -205,6 +206,8 @@ function build(){
 const card = id => $("#c-" + id), stage = id => card(id).querySelector(".stage");
 function setS(id, s, label){ const c = card(id); c.dataset.s = s;
   c.querySelector(".st").innerHTML = s === "run" ? `<span class="spin"></span>${label || "working"}` : s === "ok" ? (label || "done") : s === "blocked" ? "blocked" : ""; }
+// relabel the i-th "who" chip of a stage, e.g. when failover means a different model or code did the work
+function who(id, i, label, zone){ const el = card(id).querySelectorAll(".who span")[i]; if (el) el.innerHTML = `<i style="background:${C[zone]}"></i>${label}`; }
 function kv(id, label, val, cls = ""){ card(id).querySelector(".logs").insertAdjacentHTML("beforebegin", `<div class="kv ${cls}"><b>${esc(val)}</b>${label}</div>`); }
 
 async function activate(id){
@@ -369,6 +372,8 @@ function flush(id){ S.pend.forEach(e => log(id, e)); S.pend = []; }
 
 async function handle(ev){
   S.all.push(ev);
+  // COORDINATOR=script, or no cloud model reachable: the run was finished by on-device code, not by Gemini
+  if ((ev.kind === "run_start" || ev.kind === "run_end") && ev.agent === "pipeline") who("result", 0, "Pipeline · on-device code", "code");
   if (ev.kind === "model_start" && ev.zone === "cloud"){ S.cloud++; $("#sCloud").textContent = S.cloud; }
   const k = ev.kind, n = ev.name;
 
@@ -474,7 +479,9 @@ async function ask(){
   const q = $("#q").value.trim(); if (!q) return;
   const m = $("#msgs"); m.insertAdjacentHTML("beforeend", `<div class="msg me">${esc(q)}</div>`); $("#q").value = "";
   const r = await (await fetch("/agent/ask", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({doc_id:S.docId, question:q})})).json();
-  m.insertAdjacentHTML("beforeend", `<div class="msg cloud"><em>GEMINI · answering your anonymised copy</em>${esc((r.cloud_answer || "").slice(0, 700))}</div>`);
+  const local = r.answered_zone === "local";  // failover: Gemini unavailable, Gemma answered on this Mac
+  if (local) who("result", 1, "Assistant · Gemma 4 (Gemini unavailable)", "local");
+  m.insertAdjacentHTML("beforeend", `<div class="msg ${local ? "local" : "cloud"}"><em>${local ? "GEMMA · ON THIS MAC · Gemini unavailable" : "GEMINI"} · answering your anonymised copy</em>${esc((r.cloud_answer || "").slice(0, 700))}</div>`);
   m.scrollTop = 1e6; await sleep(900);
   m.insertAdjacentHTML("beforeend", `<div class="msg you"><em>YOU SEE · ${r.swapped_back} detail(s) restored on this Mac</em>${esc((r.answer || "").slice(0, 700))}</div>`);
   m.scrollTop = 1e6; since();
