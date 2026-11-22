@@ -22,6 +22,7 @@ OVERLOADED = {429, 500, 503, 504}
 COOLDOWN = float(os.environ.get("MODEL_COOLDOWN", "60"))  # seconds a failed model is skipped
 TIMEOUT = float(os.environ.get("MODEL_TIMEOUT", "30"))  # seconds per cloud call; local models may take their time
 _down = {}  # model name -> time it may be tried again (shared by all agents)
+FALLBACKS = {}  # agent name -> its FallbackLlm, so the trace can label a call with the model it really uses
 
 
 class CloudUnavailable(Exception):
@@ -50,23 +51,37 @@ class FallbackLlm(BaseLlm):
         # e.g. CLOUD_MODEL=gemini-flash-lite-latest equals the default fallback: try it once, not twice
         chain = [m for i, m in enumerate(chain) if m.model not in {c.model for c in chain[:i]}]
         super().__init__(model=chain[0].model, chain=chain, agent=agent)
+        FALLBACKS[agent] = self
+
+    def _plan(self):
+        """(models to try, in order; why the others are skipped). Skipped models are sent nothing."""
+        live, skipped = [], []
+        for m in self.chain:
+            if _down.get(m.model, 0) > time.time():
+                skipped.append(f"{m.model}: cooling down")
+            elif "ollama" not in m.model and not _has_credentials():
+                skipped.append(f"{m.model}: no API key")
+            else:
+                live.append(m)
+        return live, skipped
+
+    def first_choice(self):
+        """The model the next call goes to first, or None if no model is available."""
+        live, _ = self._plan()
+        return live[0].model if live else None
 
     @property
     def capabilities(self):
         return self.chain[0].capabilities
 
     async def generate_content_async(self, llm_request: LlmRequest, stream: bool = False) -> AsyncGenerator[LlmResponse, None]:
-        live = [m for m in self.chain if _down.get(m.model, 0) <= time.time()]
-        skipped = [m.model for m in self.chain if m not in live]
-        failed = []
+        live, failed = self._plan()
         for i, m in enumerate(live):
             llm_request.model = m.model
-            if i or skipped:
+            if failed:
+                # sent: this switch sends one more request to the cloud (the first one is the trace's model_start)
                 A.emit("policy", agent=self.agent, zone="policy", name="model_fallback", decision="FALLBACK",
-                       detail=f"{', '.join(failed + [f'{s}: cooling down' for s in skipped])} → {m.model}")
-            if "ollama" not in m.model and not _has_credentials():  # skipped before anything is sent
-                failed.append(f"{m.model}: no API key")
-                continue
+                       detail=f"{', '.join(failed)} → {m.model}", sent=bool(i) and "ollama" not in m.model)
             try:
                 # collected before yielding: the timeout must not cover what the caller does with
                 # the answer (e.g. run a tool), and a failed model must not have yielded anything
@@ -87,4 +102,4 @@ class FallbackLlm(BaseLlm):
                     yield r
                 return
             _down[m.model] = time.time() + COOLDOWN
-        raise CloudUnavailable("; ".join(failed + [f"{s}: cooling down" for s in skipped]))
+        raise CloudUnavailable("; ".join(failed))

@@ -374,7 +374,8 @@ async function handle(ev){
   S.all.push(ev);
   // COORDINATOR=script, or no cloud model reachable: the run was finished by on-device code, not by Gemini
   if ((ev.kind === "run_start" || ev.kind === "run_end") && ev.agent === "pipeline") who("result", 0, "Pipeline · on-device code", "code");
-  if (ev.kind === "model_start" && ev.zone === "cloud"){ S.cloud++; $("#sCloud").textContent = S.cloud; }
+  // requests that really left the Mac: each call's first model, plus every further cloud model the failover tries
+  if ((ev.kind === "model_start" && ev.zone === "cloud") || (ev.name === "model_fallback" && ev.sent)){ S.cloud++; $("#sCloud").textContent = S.cloud; }
   const k = ev.kind, n = ev.name;
 
   if (k === "run_start"){
