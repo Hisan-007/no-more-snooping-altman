@@ -16,6 +16,7 @@ from google.adk.plugins import BasePlugin
 from google.genai import types
 
 from . import audit as A
+from .fallback import FALLBACKS
 from .vault import VAULT
 
 ZONE = {"coordinator": "cloud", "assistant": "cloud", "naive_agent": "cloud",
@@ -31,9 +32,10 @@ ALLOW = {
 
 
 def zone_of(agent_name, model=""):
-    if agent_name in ZONE:
-        return ZONE[agent_name]
-    return "local" if "ollama" in str(model) else "cloud"
+    # the model decides when known: a cloud agent that fell back to local Gemma runs locally
+    if "ollama" in str(model):
+        return "local"
+    return ZONE.get(agent_name, "cloud")
 
 
 def _request_text(req) -> str:
@@ -90,14 +92,17 @@ class TracePlugin(BasePlugin):
 
     async def before_model_callback(self, *, callback_context, llm_request):
         name = callback_context.agent_name
-        zone = zone_of(name, llm_request.model)
+        model = llm_request.model
+        if name in FALLBACKS:  # label the call with the model it really goes to first, not the configured one
+            model = FALLBACKS[name].first_choice()
+        zone = zone_of(name, model) if model else "none"  # none: no model available, nothing is sent
         sid = A.new_span()
         self.open[("model", callback_context.invocation_id, name)] = (sid, time.time())
         text = _request_text(llm_request)
         # cloud payloads are shown verbatim (they must be clean - the GuardPlugin enforces it);
         # local payloads hold raw document text, so only their size is logged
         payload = text if zone == "cloud" else f"<{len(text)} chars of document text - stays on this Mac>"
-        A.emit("model_start", self._rid(callback_context), agent=name, zone=zone, name=str(llm_request.model),
+        A.emit("model_start", self._rid(callback_context), agent=name, zone=zone, name=str(model or "no model available"),
                span=sid, payload=payload[:20000], chars=len(text))
 
     async def after_model_callback(self, *, callback_context, llm_response):
@@ -106,7 +111,8 @@ class TracePlugin(BasePlugin):
             return None
         sid, t = self.open.pop(("model", callback_context.invocation_id, name), (None, time.time()))
         u = llm_response.usage_metadata
-        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name), span=sid,
+        served = (llm_response.custom_metadata or {}).get("served_by", "")  # set by FallbackLlm
+        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name, served), span=sid,
                ms=round((time.time() - t) * 1000), detail=_response_summary(llm_response)[:1500],
                tokens={"in": getattr(u, "prompt_token_count", None), "out": getattr(u, "candidates_token_count", None)} if u else None)
         return None
@@ -114,7 +120,7 @@ class TracePlugin(BasePlugin):
     async def on_model_error_callback(self, *, callback_context, llm_request, error):
         name = callback_context.agent_name
         sid, t = self.open.pop(("model", callback_context.invocation_id, name), (None, time.time()))
-        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name), span=sid,
+        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name, llm_request.model), span=sid,
                ms=round((time.time() - t) * 1000), detail=f"error: {error}", error=True)
         return None
 

@@ -104,6 +104,7 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
 .msg em{display:block;font-style:normal;font-size:11px;font-weight:600;color:var(--faint);margin-bottom:4px;letter-spacing:.3px}
 .msg.cloud{background:#eef2ff} .msg.cloud em{color:var(--run)}
 .msg.you{background:#ecfdf5} .msg.you em{color:var(--ok)}
+.msg.local{background:#f5f4f0} .msg.local em{color:#059669}
 .ask{display:flex;gap:8px;margin-top:12px}
 .ask input{flex:1;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
 .mini{display:flex;gap:14px;margin-top:12px}
@@ -132,7 +133,7 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
 .lg{white-space:pre-wrap;word-break:break-word;margin-bottom:3px}
 .lg .t{color:#4b5563} .lg .h{color:#374151}
 .kp{color:#c4b5fd} .km{color:#93c5fd} .kl{color:#86efac} .kt{color:#fcd34d}
-.ALLOW{color:#86efac} .BLOCK,.QUARANTINE,.DROP{color:#fda4af} .OVERRIDE,.REWRITE{color:#fcd34d}
+.ALLOW{color:#86efac} .BLOCK,.QUARANTINE,.DROP{color:#fda4af} .OVERRIDE,.REWRITE,.FALLBACK{color:#fcd34d}
 .lg details{margin:2px 0 4px 20px} .lg summary{cursor:pointer;color:#6b7280}
 .lg pre{margin:4px 0;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:6px;white-space:pre-wrap;max-height:260px;overflow:auto;color:#9ca3af}
 </style>
@@ -162,7 +163,8 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+// the page never waits for its own effects: it shows each step as soon as the server reports it
+const wait = ms => new Promise(r => setTimeout(r, ms));
 const C = {cloud:"#4f46e5", local:"#059669", tool:"#d97706", code:"#7c3aed"};
 
 const STAGES = [
@@ -180,7 +182,7 @@ const TOOL = {load_document:"ocr", analyse_document:"gemma", redact_document:"er
 const GATE = {size_limit:"Size", file_type:"File type", pdf_active_content:"No scripts in PDF", decompression_bomb:"Pixel bomb", resolution:"Resolution"};
 
 let S;
-function reset(){ S = {run:null, all:[], logs:{}, cur:null, doc:null, imgs:{}, cloud:0, blocked:false, done:false, inj:new Set(), t:{}, pend:[]}; STAGES.forEach(s => S.logs[s.id] = []); }
+function reset(){ S = {run:null, all:[], logs:{}, cur:null, doc:null, imgs:{}, cloud:0, blocked:false, done:false, inj:new Set(), pend:[]}; STAGES.forEach(s => S.logs[s.id] = []); }
 reset();
 
 function build(){
@@ -198,19 +200,17 @@ function build(){
 const card = id => $("#c-" + id), stage = id => card(id).querySelector(".stage");
 function setS(id, s, label){ const c = card(id); c.dataset.s = s;
   c.querySelector(".st").innerHTML = s === "run" ? `<span class="spin"></span>${label || "working"}` : s === "ok" ? (label || "done") : s === "blocked" ? "blocked" : ""; }
+// relabel the i-th "who" chip of a stage, e.g. when failover means a different model or code did the work
+function who(id, i, label, zone){ const el = card(id).querySelectorAll(".who span")[i]; if (el) el.innerHTML = `<i style="background:${C[zone]}"></i>${label}`; }
 function kv(id, label, val, cls = ""){ card(id).querySelector(".logs").insertAdjacentHTML("beforebegin", `<div class="kv ${cls}"><b>${esc(val)}</b>${label}</div>`); }
 
-async function activate(id){
-  S.cur = id; S.t[id] = performance.now();
+function activate(id){
+  S.cur = id;
   if (IDX[id]) $("#l-" + id).classList.add("on");
   setS(id, "run");
   card(id).scrollIntoView({behavior:"smooth", inline:"center", block:"nearest"});
-  await sleep(1200);
 }
-async function finish(id, label){
-  const left = 2400 - (performance.now() - S.t[id]); if (left > 0) await sleep(left);
-  setS(id, "ok", label); await sleep(800);
-}
+function finish(id, label){ setS(id, "ok", label); }
 async function block(id, why){
   S.blocked = true; setS(id, "blocked");
   const st = stage(id), p = st.querySelector(".paper");
@@ -271,14 +271,10 @@ function textSheet(color){
 async function showOCR(){
   const st = stage("ocr");
   st.innerHTML = paper(`<img src="${S.doc.original}"><svg ${VB()} id="ob"></svg>`);
-  await sleep(500);
-  const ob = $("#ob"), n = S.doc.lines.length, gap = Math.min(120, 3000 / Math.max(1, n));
-  for (const ln of S.doc.lines){ ob.insertAdjacentHTML("beforeend", `<g class="fade">${rect(ln.box, "rgba(79,70,229,.10)", "#4f46e5", 2.5)}</g>`); await sleep(gap); }
-  await sleep(500);
+  const ob = $("#ob"), n = S.doc.lines.length;
+  ob.innerHTML = S.doc.lines.map(ln => `<g class="fade">${rect(ln.box, "rgba(79,70,229,.10)", "#4f46e5", 2.5)}</g>`).join("");
   st.insertAdjacentHTML("beforeend", `<div class="arrow"></div>`);
-  await sleep(600);
   st.insertAdjacentHTML("beforeend", paper(`<svg ${VB()}>${textSheet("#4f46e5")}</svg>`));
-  await sleep(1300);
   const words = S.doc.lines.reduce((a, l) => a + l.text.split(/\s+/).filter(Boolean).length, 0);
   kv("ocr", "lines", n); kv("ocr", "words", words);
 }
@@ -295,30 +291,18 @@ function agentRow(name, ms){ const r = document.getElementById("r-" + name); if 
 async function showGuard(){
   const d = S.doc;
   stage("guard").innerHTML = paper(`<img src="${d.original}"><svg ${VB()} id="gb"></svg>`);
-  await sleep(600);
-  const gb = $("#gb");
-  for (const k of d.kept){ gb.insertAdjacentHTML("beforeend", `<g class="fade">${rect(k.box, "rgba(161,161,170,.10)", "#a1a1aa", 2.5, true)}</g>`); await sleep(90); }
-  for (const q of d.quarantined){ gb.insertAdjacentHTML("beforeend", `<g class="fade">${rect(q.box, "rgba(225,29,72,.12)", "#e11d48", 3)}</g>`); await sleep(150); }
-  for (const it of d.items){ gb.insertAdjacentHTML("beforeend", `<g class="fade">${rect(it.box, "rgba(5,150,105,.16)", "#059669", 3.5)}</g>`); await sleep(220); }
-  await sleep(300);
+  $("#gb").innerHTML = [...d.kept.map(k => rect(k.box, "rgba(161,161,170,.10)", "#a1a1aa", 2.5, true)),
+                        ...d.quarantined.map(q => rect(q.box, "rgba(225,29,72,.12)", "#e11d48", 3)),
+                        ...d.items.map(it => rect(it.box, "rgba(5,150,105,.16)", "#059669", 3.5))].map(r => `<g class="fade">${r}</g>`).join("");
   kv("guard", "yours → replace", d.items.length, "g"); kv("guard", "others' → keep", d.kept.length);
   if (d.quarantined.length) kv("guard", "injected → ignored", d.quarantined.length, "r");
 }
-async function wipe(id, from, to, color){
-  const d = S.doc;
-  stage(id).innerHTML = paper(`<canvas id="cv-${id}" width="${d.width}" height="${d.height}"></canvas>`);
-  const g = document.getElementById("cv-" + id).getContext("2d"); g.drawImage(from, 0, 0);
-  await sleep(500);
-  for (const it of d.items){
-    const [x1, y1, x2, y2] = it.box, x = Math.max(0, x1 - 6), y = Math.max(0, y1 - 6), w = Math.min(d.width - x, x2 - x1 + 50), h = Math.min(d.height - y, y2 - y1 + 12);
-    for (let k = 1; k <= 10; k++){ g.drawImage(from, x, y, w, h, x, y, w, h); g.drawImage(to, x, y, w * k / 10, h, x, y, w * k / 10, h);
-      g.fillStyle = color; g.fillRect(x + w * k / 10 - 3, y, 3, h); await sleep(30); }
-    g.drawImage(to, x, y, w, h, x, y, w, h); await sleep(140);
-  }
-  g.drawImage(to, 0, 0);
+function draw(id, img){
+  stage(id).innerHTML = paper(`<canvas id="cv-${id}" width="${S.doc.width}" height="${S.doc.height}"></canvas>`);
+  document.getElementById("cv-" + id).getContext("2d").drawImage(img, 0, 0);
 }
 async function showPaint(){
-  await wipe("paint", S.imgs.erased, S.imgs.anonymized, "#059669");
+  draw("paint", S.imgs.anonymized);
   const seen = new Set(), pairs = S.doc.items.filter(it => it.fake && it.fake !== it.text && !seen.has(it.text) && seen.add(it.text)).slice(0, 5);
   stage("paint").insertAdjacentHTML("beforeend", `<div class="side">${pairs.map((it, i) => `<div class="pair" style="animation-delay:${i * .25}s"><s>${esc(it.text)}</s><b>${esc(it.fake)}</b></div>`).join("")}</div>`);
   const fam = S.doc.render.find(r => r.doc_family)?.doc_family;
@@ -335,7 +319,6 @@ async function showVerify(){
     o.data[i + 3] = 255;
   }
   g.putImageData(o, 0, 0);
-  await sleep(1100);
   const v = d.verify, left = v.ghost_items.length + v.leaked_items.length;
   kv("verify", "readable leftovers", left, left ? "r" : "g");
   kv("verify", "px changed elsewhere", v.pixels_changed_outside_boxes, v.pixels_changed_outside_boxes ? "y" : "g");
@@ -362,7 +345,10 @@ function flush(id){ S.pend.forEach(e => log(id, e)); S.pend = []; }
 
 async function handle(ev){
   S.all.push(ev);
-  if (ev.kind === "model_start" && ev.zone === "cloud"){ S.cloud++; $("#sCloud").textContent = S.cloud; }
+  // COORDINATOR=script, or no cloud model reachable: the run was finished by on-device code, not by Gemini
+  if ((ev.kind === "run_start" || ev.kind === "run_end") && ev.agent === "pipeline") who("result", 0, "Pipeline · on-device code", "code");
+  // requests that really left the Mac: each call's first model, plus every further cloud model the failover tries
+  if ((ev.kind === "model_start" && ev.zone === "cloud") || (ev.name === "model_fallback" && ev.sent)){ S.cloud++; $("#sCloud").textContent = S.cloud; }
   const k = ev.kind, n = ev.name;
 
   if (k === "run_start"){
@@ -378,9 +364,8 @@ async function handle(ev){
   }
   if (k === "policy" && ev.agent === "gatekeeper" && n !== "content_gate"){
     log("intake", ev);
-    if (n === "fingerprint"){ $("#fp").textContent = ev.detail.split(" · first")[0]; await sleep(500); return; }
+    if (n === "fingerprint"){ $("#fp").textContent = ev.detail.split(" · first")[0]; return; }
     $("#gate").insertAdjacentHTML("beforeend", `<div class="row ${ev.decision === "BLOCK" ? "bad" : "ok"}"><span class="ic">${ev.decision === "BLOCK" ? "✕" : "✓"}</span>${GATE[n] || n}</div>`);
-    await sleep(750);
     return;
   }
   if (k === "run_end"){
@@ -394,7 +379,7 @@ async function handle(ev){
     fetch(`/agent/audit/${S.run}/verify`).then(r => r.json()).then(chain);
     return;
   }
-  if (n === "content_gate"){ log("ocr", ev); if (ev.decision === "BLOCK"){ await sleep(600); await block("ocr", "No document text found. This looks like a photo, so the agents stop here."); } return; }
+  if (n === "content_gate"){ log("ocr", ev); if (ev.decision === "BLOCK"){ await block("ocr", "No document text found. This looks like a photo, so the agents stop here."); } return; }
   if (n === "path_guard"){ log("intake", ev); await block("intake", ev.detail); return; }
   if (n === "injection_rules" || n === "injection_sentinel"){ log("gemma", ev); const m = ev.detail.match(/L(\d+)/); if (m) markInj(+m[1]); return; }
   if (["sentinel_check", "quarantine_filter", "subject_check", "scope_rules"].includes(n)){ log("guard", ev); return; }
@@ -430,7 +415,7 @@ async function handle(ev){
     }
     if (n === "redacted"){
       if (S.cur !== "erase") await activate("erase");
-      await wipe("erase", S.imgs.original, S.imgs.erased, "#4f46e5");
+      draw("erase", S.imgs.erased);
       card("erase").querySelectorAll(".kv").forEach(x => x.remove()); kv("erase", "areas erased", S.doc.items.length);
       await finish("erase");
       await activate("paint"); card("paint").querySelectorAll(".kv").forEach(x => x.remove()); await showPaint(); await finish("paint");
@@ -467,8 +452,10 @@ async function ask(){
   const q = $("#q").value.trim(); if (!q) return;
   const m = $("#msgs"); m.insertAdjacentHTML("beforeend", `<div class="msg me">${esc(q)}</div>`); $("#q").value = "";
   const r = await (await fetch("/agent/ask", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({doc_id:S.docId, question:q})})).json();
-  m.insertAdjacentHTML("beforeend", `<div class="msg cloud"><em>GEMINI · answering your anonymised copy</em>${esc((r.cloud_answer || "").slice(0, 700))}</div>`);
-  m.scrollTop = 1e6; await sleep(900);
+  const local = r.answered_zone === "local";  // failover: Gemini unavailable, Gemma answered on this Mac
+  if (local) who("result", 1, "Assistant · Gemma 4 (Gemini unavailable)", "local");
+  m.insertAdjacentHTML("beforeend", `<div class="msg ${local ? "local" : "cloud"}"><em>${local ? "GEMMA · ON THIS MAC · Gemini unavailable" : "GEMINI"} · answering your anonymised copy</em>${esc((r.cloud_answer || "").slice(0, 700))}</div>`);
+  m.scrollTop = 1e6;
   m.insertAdjacentHTML("beforeend", `<div class="msg you"><em>YOU SEE · ${r.swapped_back} detail(s) restored on this Mac</em>${esc((r.answer || "").slice(0, 700))}</div>`);
   m.scrollTop = 1e6; since();
 }
@@ -488,13 +475,13 @@ async function replay(id, focus){
   reset(); build(); S.run = id;
   const evs = await (await fetch(`/agent/events_since/${id}?since=0`)).json();
   evs.forEach(push);
-  while (busy || Q.length) await sleep(200);
+  while (busy || Q.length) await wait(200);
   $("#sTime").textContent = (evs.at(-1)?.ts || 0).toFixed(1) + "s";
   if (focus){  // start the view at this stage (screenshots)
     const t = $("#track"); t.style.scrollBehavior = "auto";
     STAGES.slice(0, IDX[focus]).forEach(x => { card(x.id).style.display = "none"; const l = $("#l-" + x.id); if (l) l.style.display = "none"; });
     $("#l-" + focus) && ($("#l-" + focus).style.display = "none"); t.scrollLeft = 0; }
-  await sleep(1500); document.getAnimations().forEach(x => { try { if (x.effect.getTiming().iterations !== Infinity) x.finish(); } catch {} });
+  await wait(1500); document.getAnimations().forEach(x => { try { if (x.effect.getTiming().iterations !== Infinity) x.finish(); } catch {} });
   document.body.dataset.ready = "1";
 }
 

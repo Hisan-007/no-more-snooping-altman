@@ -44,6 +44,8 @@
 - Each runs in its own ADK Runner and session.
 - Their raw input and output never enter the coordinator's context.
 
+**Failover instead of failure.** When Gemini is overloaded (503/429), hangs (`MODEL_TIMEOUT`) or has no valid API key, a cloud agent switches at once to `CLOUD_FALLBACK_MODEL` and skips the failed model for `MODEL_COOLDOWN` seconds; the trace logs every switch. If no cloud model is left, the coordinator's fixed procedure finishes as plain code on-device, resuming after its last completed tool, and the assistant answers with local Gemma. `COORDINATOR=script` uses that on-device path from the start, with no cloud calls for anonymisation. The UI names whoever actually did the work and counts only requests that really left the Mac.
+
 ---
 
 ## 3. Security & trust: defence in depth
@@ -123,6 +125,6 @@ A photo without document text is stopped right after OCR.
 ## 8. Why it scales
 
 - **Stateless agents, pluggable models.** Each agent is an ADK agent with its model set in config (`CLOUD_MODEL`, `LOCAL_MODEL`). You can swap Gemma sizes or Gemini versions without touching the pipeline.
-- **The expensive work is local and parallel.** OCR, inpainting and the two reader agents run on-device, and analyst and sentinel run concurrently. Cloud cost is a handful of small, placeholder-only planning calls per document.
+- **The expensive work is local and parallel.** OCR, inpainting and the two reader agents run on-device, and analyst and sentinel run concurrently (start Ollama with `OLLAMA_NUM_PARALLEL=2`, or it queues them). The models are preloaded at server start, so the first run is as fast as the rest. Cloud cost is a handful of small, placeholder-only planning calls per document, or none with `COORDINATOR=script`.
 - **Policy is code, not a prompt.** It is predictable, testable and auditable, and the same rules apply to every document type: medical letters, invoices, contracts.
 - **The privacy wall is enforced in the framework.** It sits in ADK callbacks, so any new agent or tool added later is covered automatically.
