@@ -55,7 +55,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 - macOS on Apple Silicon (OCR uses Apple's Vision framework)
 - [uv](https://docs.astral.sh/uv/)
 - [Ollama](https://ollama.com)
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey)
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) (optional: without one, everything runs on-device)
 
 ## Setup
 
