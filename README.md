@@ -114,7 +114,7 @@ Terminal version:
 
 | Variable | Default | |
 |---|---|---|
-| `GOOGLE_API_KEY` | none | Gemini API key (required for the cloud coordinator and chat) |
+| `GOOGLE_API_KEY` | none | Gemini API key for the cloud coordinator and chat. Without a (valid) key, both run on-device: the pipeline as code, the chat with Gemma |
 | `COORDINATOR` | `cloud` | Set to `script` to run the coordinator's fixed procedure as plain code: no cloud calls for anonymisation, fewer API requests, faster runs |
 | `CLOUD_MODEL` | `gemini-flash-latest` | Model for the coordinator and chat |
 | `CLOUD_FALLBACK_MODEL` | `gemini-flash-lite-latest` | Used at once when `CLOUD_MODEL` is overloaded (503/429) or hangs |
