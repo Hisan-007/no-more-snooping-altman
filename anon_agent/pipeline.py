@@ -1,5 +1,6 @@
 """Entry points used by the web server and the CLI."""
 import json
+import os
 import time
 
 from google.adk.runners import InMemoryRunner
@@ -12,6 +13,10 @@ from .fallback import CloudUnavailable
 from .plugins import GuardPlugin, TracePlugin
 from .vault import VAULT
 
+# "cloud" (default): the Gemini coordinator plans the run. "script": run its fixed procedure as
+# plain code instead - no cloud calls for anonymisation, ~6 fewer requests and ~30 s faster per run.
+COORDINATOR = os.environ.get("COORDINATOR", "cloud")
+
 
 def _text(ev):
     if not ev.content or not ev.content.parts:
@@ -22,8 +27,16 @@ def _text(ev):
 async def run_pipeline(run, path):
     """Let the coordinator anonymise the document at `path`. Streams into run.events."""
     token = A.RUN_ID.set(run.run_id)
+    agent, zone = "coordinator", "cloud"
     try:
-        run.emit("run_start", agent="coordinator", zone="cloud", name="anonymise", detail=f"document: {path}")
+        if COORDINATOR == "script":
+            agent, zone = "pipeline", "local"
+            run.emit("run_start", agent=agent, zone=zone, name="anonymise", detail=f"document: {path}")
+            final = await run_scripted(run, path, [], "Run on-device by the scripted pipeline (COORDINATOR=script): "
+                                                      "no cloud model was used for anonymisation.")
+            run.emit("run_end", agent=agent, zone=zone, name="report", detail=final)
+            return final
+        run.emit("run_start", agent=agent, zone=zone, name="anonymise", detail=f"document: {path}")
         runner = InMemoryRunner(agent=coordinator, app_name="anon", plugins=[GuardPlugin(), TracePlugin()])
         s = await runner.session_service.create_session(app_name="anon", user_id="user")
         final, calls = "", []
@@ -36,13 +49,15 @@ async def run_pipeline(run, path):
         except CloudUnavailable as e:
             run.emit("policy", agent="coordinator", zone="policy", name="model_fallback", decision="FALLBACK",
                      detail=f"no cloud model available ({e}) → finishing the procedure on-device")
-            final = await run_scripted(run, path, calls)
-            run.emit("run_end", agent="pipeline", zone="local", name="report", detail=final)
+            agent, zone = "pipeline", "local"
+            final = await run_scripted(run, path, calls, "Finished on-device: no cloud model was available, "
+                                                         "so this report is generated, not written by the coordinator.")
+            run.emit("run_end", agent=agent, zone=zone, name="report", detail=final)
             return final
-        run.emit("run_end", agent="coordinator", zone="cloud", name="report", detail=final)
+        run.emit("run_end", agent=agent, zone=zone, name="report", detail=final)
         return final
     except Exception as e:  # surface in the UI instead of dying silently
-        run.emit("run_end", agent="coordinator", zone="cloud", name="error", detail=f"{type(e).__name__}: {e}", error=True)
+        run.emit("run_end", agent=agent, zone=zone, name="error", detail=f"{type(e).__name__}: {e}", error=True)
         raise
     finally:
         run.done = True
@@ -64,9 +79,10 @@ async def _call(run, name, **args):
     return res
 
 
-async def run_scripted(run, path, calls):
-    """The coordinator's procedure as plain code, for when no cloud model is reachable.
-    Continues after the last tool the coordinator completed (`calls`), so no work is redone."""
+async def run_scripted(run, path, calls, why):
+    """The coordinator's procedure as plain code: with COORDINATOR=script, or when no cloud model
+    is reachable. Continues after the last tool the coordinator completed (`calls`), so no work
+    is redone. `why` opens the report."""
     got = dict(calls)
     last = calls[-1][0] if calls else None
     try:
@@ -96,7 +112,7 @@ async def run_scripted(run, path, calls):
         kinds[it["type"]] = kinds.get(it["type"], 0) + 1
     q = a["quarantined_lines"]
     return "\n".join([
-        "- Finished on-device: no cloud model was available, so this report is generated, not written by the coordinator.",
+        f"- {why}",
         f"- Document of {a['subject']}: replaced " + (", ".join(f"{n} {k}" for k, n in kinds.items()) or "nothing") + ".",
         "- Kept (someone else's data): " + (", ".join(f"{n} {k}" for k, n in a["kept_someone_elses"].items()) or "nothing") + ".",
         f"- Security: {len(q)} quarantined line(s)" + (": " + "; ".join(f"L{x['line']} {x['reason']}" for x in q) if q else "") + ".",
