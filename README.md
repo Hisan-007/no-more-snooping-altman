@@ -88,6 +88,7 @@ Open http://localhost:8000, pick a sample and press **Run**. The first run takes
 | Page | What |
 |---|---|
 | `/` | Step-by-step view of the agents |
+| `/?fast` | Same view without the animation pauses: finishes when the server does |
 | `/trace` | Detailed trace view |
 | `/architecture` | Architecture diagram (source of `architecture.png`) |
 | `/?replay=<run_id>` | Replays a finished run from its audit log, without calling Gemini |

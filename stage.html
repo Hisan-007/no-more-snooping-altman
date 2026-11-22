@@ -162,7 +162,10 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const wait = ms => new Promise(r => setTimeout(r, ms));
+// /?fast: skip the animation pauses (stage minimum times, box-by-box effects) - the page keeps up with the server
+const FAST = new URLSearchParams(location.search).has("fast");
+const sleep = ms => wait(FAST ? 0 : ms);
 const C = {cloud:"#4f46e5", local:"#059669", tool:"#d97706", code:"#7c3aed"};
 
 const STAGES = [
@@ -488,7 +491,7 @@ async function replay(id, focus){
   reset(); build(); S.run = id;
   const evs = await (await fetch(`/agent/events_since/${id}?since=0`)).json();
   evs.forEach(push);
-  while (busy || Q.length) await sleep(200);
+  while (busy || Q.length) await wait(200);
   $("#sTime").textContent = (evs.at(-1)?.ts || 0).toFixed(1) + "s";
   if (focus){  // start the view at this stage (screenshots)
     const t = $("#track"); t.style.scrollBehavior = "auto";
