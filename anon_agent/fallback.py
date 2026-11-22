@@ -36,6 +36,8 @@ class FallbackLlm(BaseLlm):
     agent: str = ""  # only for the trace
 
     def __init__(self, chain, agent=""):
+        # e.g. CLOUD_MODEL=gemini-flash-lite-latest equals the default fallback: try it once, not twice
+        chain = [m for i, m in enumerate(chain) if m.model not in {c.model for c in chain[:i]}]
         super().__init__(model=chain[0].model, chain=chain, agent=agent)
 
     @property
