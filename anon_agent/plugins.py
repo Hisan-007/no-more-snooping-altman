@@ -31,9 +31,10 @@ ALLOW = {
 
 
 def zone_of(agent_name, model=""):
-    if agent_name in ZONE:
-        return ZONE[agent_name]
-    return "local" if "ollama" in str(model) else "cloud"
+    # the model decides when known: a cloud agent that fell back to local Gemma runs locally
+    if "ollama" in str(model):
+        return "local"
+    return ZONE.get(agent_name, "cloud")
 
 
 def _request_text(req) -> str:
@@ -106,7 +107,8 @@ class TracePlugin(BasePlugin):
             return None
         sid, t = self.open.pop(("model", callback_context.invocation_id, name), (None, time.time()))
         u = llm_response.usage_metadata
-        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name), span=sid,
+        served = (llm_response.custom_metadata or {}).get("served_by", "")  # set by FallbackLlm
+        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name, served), span=sid,
                ms=round((time.time() - t) * 1000), detail=_response_summary(llm_response)[:1500],
                tokens={"in": getattr(u, "prompt_token_count", None), "out": getattr(u, "candidates_token_count", None)} if u else None)
         return None
@@ -114,7 +116,7 @@ class TracePlugin(BasePlugin):
     async def on_model_error_callback(self, *, callback_context, llm_request, error):
         name = callback_context.agent_name
         sid, t = self.open.pop(("model", callback_context.invocation_id, name), (None, time.time()))
-        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name), span=sid,
+        A.emit("model_end", self._rid(callback_context), agent=name, zone=zone_of(name, llm_request.model), span=sid,
                ms=round((time.time() - t) * 1000), detail=f"error: {error}", error=True)
         return None
 

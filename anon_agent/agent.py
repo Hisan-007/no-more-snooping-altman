@@ -10,22 +10,31 @@
                                    question is pseudonymised before it leaves, the answer is
                                    re-identified on the way back.
 
+Failover (fallback.py): on 503/429 a cloud agent switches at once to CLOUD_FALLBACK_MODEL; the
+assistant then to local Gemma. If no cloud model is left, the coordinator's procedure finishes
+as plain code on-device (pipeline.run_scripted).
+
 `adk web` picks up `root_agent` / `app` from this module.
 """
 import os
 
 from google.adk.agents import LlmAgent
 from google.adk.apps import App
+from google.adk.models import Gemini
+from google.adk.models.lite_llm import LiteLlm
 
 from . import tools as T
+from .fallback import FallbackLlm
 from .plugins import GuardPlugin, TracePlugin
+from .specialists import LOCAL_MODEL, THINK
 
 CLOUD_MODEL = os.environ.get("CLOUD_MODEL", "gemini-flash-latest")
+CLOUD_FALLBACK_MODEL = os.environ.get("CLOUD_FALLBACK_MODEL", "gemini-flash-lite-latest")
 
 coordinator = LlmAgent(
     name="coordinator",
     description="Plans and runs the anonymisation pipeline. Sees placeholders only.",
-    model=CLOUD_MODEL,
+    model=FallbackLlm([Gemini(model=CLOUD_MODEL), Gemini(model=CLOUD_FALLBACK_MODEL)], agent="coordinator"),
     instruction="""You coordinate a privacy pipeline that anonymises ONE document for its owner
 (the data subject). Personal data never reaches you: tools return placeholders like NAME_1 or
 DOB_1. Never ask for or guess real values.
@@ -48,7 +57,8 @@ verification result (incl. pixels changed outside the boxes).""",
 assistant = LlmAgent(
     name="assistant",
     description="Answers questions about the anonymised document. Never sees real personal data.",
-    model=CLOUD_MODEL,
+    model=FallbackLlm([Gemini(model=CLOUD_MODEL), Gemini(model=CLOUD_FALLBACK_MODEL),
+                       LiteLlm(model=LOCAL_MODEL, think=THINK)], agent="assistant"),
     instruction="""You help a person understand their own document. You see an anonymised copy:
 names, addresses, birth dates and ID numbers in it are stand-ins, but treat them as the person's
 real details and address them by the name in the document. Be concise and concrete (max ~150 words).
