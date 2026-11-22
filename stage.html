@@ -23,6 +23,8 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
 .btn:hover,select:hover{border-color:#cfccc4}
 .btn.go{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600;padding:9px 22px}
 .btn.go:disabled{opacity:.4;cursor:default}
+.btn.toggle{display:flex;align-items:center;gap:7px;user-select:none}
+.btn.toggle input{accent-color:var(--ink);margin:0}
 .stats{margin-left:auto;display:flex;gap:26px}
 .stat{font-size:12.5px;color:var(--mute)}
 .stat b{display:block;font-size:20px;color:var(--ink);font-weight:650;letter-spacing:-.4px}
@@ -143,6 +145,7 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
   <select id="sample"></select>
   <label class="btn">Upload<input id="file" type="file" accept="image/*,.pdf" hidden></label>
   <button class="btn go" id="go">Run</button>
+  <label class="btn toggle" title="Skip the animation pauses: the page keeps up with the server"><input type="checkbox" id="fast">Fast</label>
   <div class="stats">
     <div class="stat"><b id="sTime">0.0s</b>elapsed</div>
     <div class="stat"><b id="sCloud">0</b>cloud requests</div>
@@ -163,8 +166,9 @@ select,.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padd
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const wait = ms => new Promise(r => setTimeout(r, ms));
-// /?fast: skip the animation pauses (stage minimum times, box-by-box effects) - the page keeps up with the server
-const FAST = new URLSearchParams(location.search).has("fast");
+// Fast toggle / ?fast: skip the animation pauses (stage minimum times, box-by-box effects) - the page
+// keeps up with the server. Read on every pause, so switching it mid-run speeds up the rest at once.
+let FAST = new URLSearchParams(location.search).has("fast");
 const sleep = ms => wait(FAST ? 0 : ms);
 const C = {cloud:"#4f46e5", local:"#059669", tool:"#d97706", code:"#7c3aed"};
 
@@ -503,6 +507,12 @@ async function replay(id, focus){
 
 (async () => {
   build();
+  $("#fast").checked = FAST;
+  $("#fast").onchange = e => {  // keep ?fast in the URL, so a reload or bookmark keeps the choice
+    FAST = e.target.checked; const u = new URL(location);
+    FAST ? u.searchParams.set("fast", "") : u.searchParams.delete("fast");
+    history.replaceState(null, "", u.toString().replace("fast=&", "fast&").replace(/fast=$/, "fast"));
+  };
   const s = await (await fetch("/samples")).json();
   const P = new URLSearchParams(location.search);
   if (P.get("replay")) replay(P.get("replay"), P.get("focus"));
