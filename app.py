@@ -196,16 +196,29 @@ def run_anonymize(req: AnonReq):
 import asyncio  # noqa: E402
 import json  # noqa: E402
 import secrets  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
 
 from fastapi import Request  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 
 from anon_agent import audit as AUD  # noqa: E402
-from anon_agent.pipeline import Chat, run_pipeline  # noqa: E402
+from anon_agent.pipeline import Chat, run_pipeline, warm_up  # noqa: E402
 from anon_agent.vault import VAULT  # noqa: E402
 
 CHATS = {}
 TASKS = set()
+
+
+@asynccontextmanager
+async def _warm_on_start(_app):
+    # in the background: the server answers at once, and the first run finds the models loaded
+    t = asyncio.create_task(warm_up())
+    TASKS.add(t)
+    t.add_done_callback(TASKS.discard)
+    yield
+
+
+app.router.lifespan_context = _warm_on_start
 
 
 MAX_BYTES = 15 * 1024 * 1024

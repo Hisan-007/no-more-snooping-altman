@@ -1,12 +1,18 @@
 """Entry points used by the web server and the CLI."""
+import asyncio
 import json
+import logging
 import os
 import time
 
 from google.adk.runners import InMemoryRunner
 from google.genai import types
+from PIL import Image
 
+import erase as E
+import ocr as O
 from . import audit as A
+from . import specialists as S
 from . import tools as T
 from .agent import assistant, coordinator
 from .fallback import CloudUnavailable
@@ -16,6 +22,30 @@ from .vault import VAULT
 # "cloud" (default): the Gemini coordinator plans the run. "script": run its fixed procedure as
 # plain code instead - no cloud calls for anonymisation, ~6 fewer requests and ~30 s faster per run.
 COORDINATOR = os.environ.get("COORDINATOR", "cloud")
+
+
+log = logging.getLogger("uvicorn.error")
+
+
+async def warm_up():
+    """Load what the first run would otherwise wait for, so it is as fast as the ones after it:
+    Gemma in Ollama plus ADK/LiteLLM's first-call setup (~3 s), Vision OCR, and the inpainting
+    model (0.5 s, but ~30 s with cold OS caches, e.g. after a reboot)."""
+    async def gemma():
+        runner = InMemoryRunner(agent=S.sentinel, app_name="warmup")  # no plugins: nothing to trace or audit
+        s = await runner.session_service.create_session(app_name="warmup", user_id="local")
+        async for _ in runner.run_async(user_id="local", session_id=s.id, new_message=types.Content(
+                role="user", parts=[types.Part(text="<document>\nwarm-up\n</document>")])):
+            pass
+
+    t = time.time()
+    steps = {"gemma": gemma(), "ocr": asyncio.to_thread(O.ocr, Image.new("RGB", (64, 64), "white")),
+             "inpainting": asyncio.to_thread(E._lama_model)}
+    results = await asyncio.gather(*steps.values(), return_exceptions=True)
+    failed = [f"{n} ({type(r).__name__}: {r})" for n, r in zip(steps, results) if isinstance(r, Exception)]
+    if failed:  # not fatal: the first run just loads it itself (or reports the real error)
+        log.warning("warm-up: could not preload %s", ", ".join(failed))
+    log.info("warm-up: models ready in %.1f s", time.time() - t)
 
 
 def _text(ev):
